@@ -1,4 +1,5 @@
 #include "vm.h"
+#include <stdexcept>
 
 #include "expression.h"
 #include "../log.h"
@@ -133,7 +134,7 @@ void Init() {
     }
     default: {
       ImpLog(LogLevel::Fatal, LogChannel::VM, "Unsupported instruction set\n");
-      Window->Shutdown();
+      throw std::runtime_error("Unsupported instruction set");
       break;
     }
   }

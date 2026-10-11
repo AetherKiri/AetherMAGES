@@ -53,6 +53,12 @@ root.GameDefinitions = {
     LauncherOrderId = 7,
     GameProfile = root.BasePaths.RootProfilesDir .. "/modelviewer/game.lua",
   },
+  mo8 = {
+    Hidden = true,
+    Name = "Memories Off -Innocent Fille-",
+    LauncherOrderId = 9,
+    GameProfile = root.BasePaths.RootProfilesDir .. "/mo8/game.lua",
+  },
   ["modelviewer-dash"] = {
     Hidden = true,
     Name = "Model Viewer DaSH",

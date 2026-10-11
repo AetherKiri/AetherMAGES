@@ -1,4 +1,5 @@
 #include "fonts.h"
+#include <stdexcept>
 #include "profile_internal.h"
 #include "../log.h"
 #include "../renderer/renderer.h"
@@ -26,7 +27,7 @@ static std::vector<float> EnsureGetAdvanceWidths(const std::string_view name,
     if (widthTablePath.Slurp((void*&)widthBin, widthSz) != IoError_OK) {
       ImpLog(LogLevel::Fatal, LogChannel::Profile,
              "Failed to load width table file for font {:s}\n", name);
-      Window->Shutdown();
+      throw std::runtime_error("failed to load font width table");
     }
     assert(widthSz % bytesPerGlyph == 0);
 
@@ -182,7 +183,7 @@ void LoadFonts() {
         ImpLog(LogLevel::Fatal, LogChannel::Profile,
                "External fonts cannot be loaded from the profile for {:s}\n",
                name);
-        Window->Shutdown();
+        throw std::runtime_error("external fonts cannot load from profile");
         break;
     }
 

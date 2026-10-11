@@ -1,4 +1,5 @@
 #include "sprites.h"
+#include <stdexcept>
 #include "profile_internal.h"
 #include "../io/assetpath.h"
 #include "../log.h"
@@ -46,7 +47,7 @@ void LoadSpritesheets() {
       if (err != IoError_OK) {
         ImpLog(LogLevel::Fatal, LogChannel::Profile,
                "Could not open spritesheet {:s}\n", name);
-        Window->Shutdown();
+        throw std::runtime_error("could not open spritesheet");
       }
 
       futures.emplace_back(std::tuple(

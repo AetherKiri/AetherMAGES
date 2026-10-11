@@ -22,6 +22,22 @@ SET(APP_VERSION_SHORT)
 include(FetchContent)
 find_package(PkgConfig)
 
+option(IMPACTO_BUILD_HOST
+    "Build the embedded host bridge shared library (libimpacto_host) for the Aether shell instead of the standalone executable"
+    OFF)
+
+if (IMPACTO_BUILD_HOST)
+    # Host bridge: offscreen GL rendering + FIFO audio bridge, no interactive
+    # backends.
+    set(IMPACTO_DISABLE_VULKAN ON)
+    set(IMPACTO_DISABLE_DX9 ON)
+    set(IMPACTO_DISABLE_IMGUI ON)
+    set(IMPACTO_DISABLE_OPENAL ON)
+    # The bridge is a shared library, so everything linked into it (including
+    # the vendored static libraries) must be position independent.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif ()
+
 if (EMSCRIPTEN)
     list(APPEND CMAKE_MODULE_PATH ${EMSCRIPTEN_ROOT_PATH}/cmake/Modules)
 endif ()
@@ -776,6 +792,32 @@ if (WIN32)
     )
 endif ()
 
+# Host bridge audio backend: compiled in every configuration (the audio
+# backend enum knows about it), only active when selected.
+list(APPEND Impacto_Src
+    src/audio/host/hostaudiobridge.cpp
+    src/audio/host/hostaudiochannel.cpp
+    src/audio/host/ffmpegaudioplayer.cpp
+)
+list(APPEND Impacto_Header
+    src/audio/host/hostaudiobridge.h
+    src/audio/host/hostaudiochannel.h
+    src/audio/host/ffmpegaudioplayer.h
+)
+
+if (IMPACTO_BUILD_HOST)
+    list(APPEND Impacto_Src
+        src/host/impacto_host.cpp
+        src/host/hostbridge.cpp
+    )
+    list(APPEND Impacto_Header
+        src/host/impacto_host.h
+        src/host/hostbridge.h
+    )
+    # The host library replaces the standalone entry point.
+    list(REMOVE_ITEM Impacto_Src src/main.cpp)
+endif ()
+
 add_library(clHCA STATIC vendor/clHCA/clHCA.c)
 target_include_directories(clHCA PUBLIC vendor/clHCA)
 
@@ -1271,6 +1313,9 @@ configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/include/version.h)
 if(ANDROID)
     add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
     target_link_options(impacto PRIVATE "LINKER:--build-id=sha1")
+elseif(IMPACTO_BUILD_HOST)
+    add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
+    set_target_properties(impacto PROPERTIES OUTPUT_NAME "impacto_host")
 elseif(APPLE)
     add_executable(impacto MACOSX_BUNDLE ${Impacto_Src} ${Impacto_Header})
 else()
@@ -1421,6 +1466,46 @@ elseif (NX)
     add_custom_target(impacto_nro ALL DEPENDS ${IMPACTO_NRO})
 
     install(FILES ${IMPACTO_NRO} DESTINATION .)
+elseif (IMPACTO_BUILD_HOST)
+    set_property(
+        TARGET impacto
+        PROPERTY INSTALL_RPATH
+        "$ORIGIN/"
+        "$ORIGIN/lib"
+        )
+    install(TARGETS impacto atrac9
+        LIBRARY DESTINATION ./lib
+        )
+    install(FILES src/host/impacto_host.h DESTINATION include)
+    # Stage the shared-library dependencies that come from the dependency
+    # install tree (vcpkg), mirroring the executable's RUNTIME_DEPENDENCIES
+    # handling below. DIRECTORIES lets the resolver find the vcpkg copies of
+    # libraries that are not installed on the host system.
+    if(VCPKG_TARGET_TRIPLET AND EXISTS
+            "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib")
+        set(IMPACTO_HOST_DEP_DIRS
+            "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib")
+    else()
+        set(IMPACTO_HOST_DEP_DIRS "")
+    endif()
+    install(CODE "
+        set(_host_lib \"\$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libimpacto_host.so\")
+        if (EXISTS \"\${_host_lib}\")
+            file(GET_RUNTIME_DEPENDENCIES
+                RESOLVED_DEPENDENCIES_VAR _host_deps
+                UNRESOLVED_DEPENDENCIES_VAR _host_unresolved
+                LIBRARIES \"\${_host_lib}\"
+                DIRECTORIES \"${IMPACTO_HOST_DEP_DIRS}\"
+                POST_EXCLUDE_REGEXES
+                    \"^/lib\" \"^/lib64\" \"^/usr\" \"^/bin\" \"^/sbin\"
+                    \"libvulkan\\\\.so(\\\\..*)?\"
+                )
+            foreach (_dep IN LISTS _host_deps)
+                file(COPY \"\${_dep}\" DESTINATION \"${CMAKE_INSTALL_PREFIX}/lib\"
+                    FOLLOW_SYMLINK_CHAIN)
+            endforeach ()
+        endif ()
+    ")
 elseif (WIN32)
     install(TARGETS impacto RUNTIME DESTINATION .)
     install(FILES $<TARGET_RUNTIME_DLLS:impacto> DESTINATION .)

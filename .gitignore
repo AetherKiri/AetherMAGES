@@ -26,6 +26,8 @@ bld/
 [Ii]nstall/
 cmake-build-*/
 impacto-build/
+host-build/
+host-install/
 ci-build/
 
 # Visual Studio 2015 cache/options directory

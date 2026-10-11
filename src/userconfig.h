@@ -22,6 +22,9 @@ enum class VideoPlayerType : int {
 enum class AudioBackendType : int {
   None,
   OpenAL,
+  // Embedded-host bridge: audio is mixed into a FIFO drained by the host
+  // process instead of being played by this process.
+  Host,
 };
 
 enum class SubtitleAssBackendType : int {

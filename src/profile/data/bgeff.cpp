@@ -1,4 +1,5 @@
 #include "bgeff.h"
+#include <stdexcept>
 
 #include <map>
 #include "../profile_internal.h"
@@ -35,7 +36,7 @@ void Load() {
         ImpLog(LogLevel::Fatal, LogChannel::Profile,
                "Expected five entries in shader definition defined; got {:d}\n",
                arraySize);
-        Window->Shutdown();
+        throw std::runtime_error("bgeff profile: expected five entries");
       }
 
       Background2D::BgEffShaderMap.emplace(
@@ -69,7 +70,7 @@ void Load() {
             LogLevel::Fatal, LogChannel::Profile,
             "Expected five entries in texture id mapping defined; got {:d}\n",
             arraySize);
-        Window->Shutdown();
+        throw std::runtime_error("bgeff profile: expected five entries");
       }
 
       Background2D::BgEffTextureIdMap.emplace(

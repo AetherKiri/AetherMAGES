@@ -6,6 +6,7 @@
 #include <ctime>
 
 #include "expression.h"
+#include "../game.h"
 #include "../profile/scriptvars.h"
 #include "../profile/scriptinput.h"
 #include "../mem.h"
@@ -552,7 +553,7 @@ VmInstruction(InstTerminate) {
   StartInstruction;
 
   ImpLog(LogLevel::Info, LogChannel::VM, "VM requested shutdown!\n");
-  Window->Shutdown();
+  Game::ShouldQuit = true;
   // BlockThread;
   // ResetInstruction;
 }

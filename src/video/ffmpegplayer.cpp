@@ -31,6 +31,7 @@ extern "C" {
 #ifndef IMPACTO_DISABLE_OPENAL
 #include "../audio/openal/ffmpegaudioplayer.h"
 #endif
+#include "../audio/host/ffmpegaudioplayer.h"
 #include "../profile/scriptvars.h"
 #include "../profile/subtitle.h"
 #ifndef IMPACTO_DISABLE_LIBASS
@@ -87,6 +88,9 @@ void FFmpegPlayer::Init() {
       AudioPlayer.reset(new Audio::OpenAL::FFmpegAudioPlayer(this));
     } break;
 #endif
+    case AudioBackendType::Host: {
+      AudioPlayer.reset(new Audio::Host::FFmpegAudioPlayer(this));
+    } break;
     case AudioBackendType::None:
     default: {
       AudioPlayer.reset(new Audio::FFmpegAudioPlayer(this));

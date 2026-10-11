@@ -9,6 +9,7 @@
 #ifndef IMPACTO_DISABLE_OPENAL
 #include "openal/audiobackend.h"
 #endif
+#include "host/hostaudiobridge.h"
 
 #include <utility>
 
@@ -153,6 +154,10 @@ void AudioShutdown() {
     Channels[i] = nullptr;
   }
   IsInit = false;
+  if (UserConfig::AdvancedSettings.ActiveAudioBackend ==
+      AudioBackendType::Host) {
+    HostAudioBridge::Get().Reset();
+  }
   Backend->Shutdown();
 }
 
@@ -166,6 +171,10 @@ void AudioInit() {
       Backend = new OpenAL::AudioBackend();
     } break;
 #endif
+    case AudioBackendType::Host: {
+      HostAudioBridge::Get().Init(44100);
+      Backend = new AudioBackend();
+    } break;
     case AudioBackendType::None:
     default: {
       ImpLog(LogLevel::Warning, LogChannel::Audio,
@@ -251,6 +260,10 @@ void PlayInGroup(AudioChannelGroup group, std::string const& mountpoint,
 }
 
 void AudioUpdate(float dt) {
+  const bool hostBackend = UserConfig::AdvancedSettings.ActiveAudioBackend ==
+                           AudioBackendType::Host;
+  if (hostBackend) HostAudioBridge::Get().BeginTick(dt);
+
   // Set voice modifier for each voice channel
   for (int i = AC_VOICE0; i <= AC_VOICE2; i++) {
     const int charId = DialoguePages[i - AC_VOICE0].CurrentVoiceCharacterId;
@@ -265,6 +278,8 @@ void AudioUpdate(float dt) {
   for (int i = 0; i < AC_Count; i++) {
     Channels[i]->Update(dt);
   }
+
+  if (hostBackend) HostAudioBridge::Get().EndTick();
 }
 
 void AudioSubtitlesUpdate() {

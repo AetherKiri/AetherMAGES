@@ -1,4 +1,5 @@
 #include "spritesheet.h"
+#include <stdexcept>
 #include "renderer/renderer.h"
 #include <mutex>
 #include <shared_mutex>
@@ -26,7 +27,7 @@ bool SpriteLoader::LoadSync(int surfId, int archiveId, int fileId) {
   Io::Stream* stream;
   IoError err = pathRes.Open(&stream);
   if (err != IoError_OK) {
-    Window->Shutdown();
+    throw std::runtime_error("failed to open spritesheet");
   }
 
   LoadedTexture.Load(stream);

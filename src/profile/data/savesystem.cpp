@@ -1,4 +1,5 @@
 #include "savesystem.h"
+#include <stdexcept>
 #include "../profile.h"
 #include "../profile_internal.h"
 #include "../../renderer/renderer.h"
@@ -143,7 +144,7 @@ void Configure() {
       auto pairSize = lua_rawlen(LuaState, -1);
       if (pairSize != 2) {
         ImpLog(LogLevel::Fatal, LogChannel::Profile, "Expected two values\n");
-        Window->Shutdown();
+        throw std::runtime_error("save system profile: expected two values");
       }
       ScriptMessageData[i].LineCount =
           EnsureGetArrayElementByIndex<uint32_t>(0);
