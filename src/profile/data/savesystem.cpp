@@ -7,6 +7,7 @@
 #include "../../games/cclcc/savesystem.h"
 #include "../../games/chlcc/savesystem.h"
 #include "../../games/mo6tw/savesystem.h"
+#include "../../games/mo8/savesystem.h"
 
 namespace Impacto {
 namespace Profile {
@@ -118,6 +119,9 @@ void Configure() {
       break;
     case SaveDataType::MO6TW:
       Implementation = new Impacto::MO6TW::SaveSystem();
+      break;
+    case SaveDataType::MO8:
+      Implementation = new Impacto::MO8::SaveSystem();
       break;
     case SaveDataType::CCLCC:
       Implementation = new Impacto::CCLCC::SaveSystem();

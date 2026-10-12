@@ -268,6 +268,7 @@ set(Impacto_Src
     src/games/mo8/systemmenu.cpp
     src/games/mo8/optionsmenu.cpp
     src/games/mo8/savemenu.cpp
+    src/games/mo8/savesystem.cpp
 
     src/games/darling/sysmesbox.cpp
 
