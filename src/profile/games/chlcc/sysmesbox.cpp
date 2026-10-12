@@ -16,7 +16,9 @@ void Configure() {
   SelectionLeftPart = EnsureGetMember<Sprite>("SelectionLeftPart");
   SelectionRightPart = EnsureGetMember<Sprite>("SelectionRightPart");
   SelectionMiddlePart = EnsureGetMember<Sprite>("SelectionMiddlePart");
-  LoadingStar = EnsureGetMember<Sprite>("LoadingStar");
+  // The CHLCC loading-star animation is CHLCC-specific; games that reuse
+  // this sysmesbox type without it (MO8) omit the members.
+  LoadingStar = TryGetMember<Sprite>("LoadingStar").value_or(Sprite());
 
   BoxX = EnsureGetMember<float>("BoxX");
   BoxY = EnsureGetMember<float>("BoxY");
@@ -32,8 +34,11 @@ void Configure() {
   HighlightXOffset = EnsureGetMember<float>("HighlightXOffset");
   HighlightXBase = EnsureGetMember<float>("HighlightXBase");
   HighlightXStep = EnsureGetMember<float>("HighlightXStep");
-  LoadingStarsFadeDuration = EnsureGetMember<float>("LoadingStarsFadeDuration");
-  LoadingStarsPosition = EnsureGetMember<glm::vec2>("LoadingStarsPosition");
+  LoadingStarsFadeDuration =
+      TryGetMember<float>("LoadingStarsFadeDuration").value_or(0.0f);
+  LoadingStarsPosition =
+      TryGetMember<glm::vec2>("LoadingStarsPosition")
+          .value_or(glm::vec2(0.0f));
 
   auto drawType = EnsureGetMember<Game::DrawComponentType>("DrawType");
 

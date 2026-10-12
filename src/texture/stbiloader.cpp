@@ -29,6 +29,20 @@ bool TextureLoadSTBI(Io::Stream* stream, Texture* outTexture) {
     return false;
   }
 
+  if (channels_in_file == 2) {
+    // gray + alpha (the MO8 PC mask/texture PNGs): expand to RGBA, stbi
+    // replicates the gray value into RGB.
+    free(image);
+    stream->Seek(0, IoSeek::Set);
+    image = stbi_load_from_callbacks(&StbiCallbacks, stream, &x, &y,
+                                     &channels_in_file, 4);
+    if (image == 0) {
+      stream->Seek(0, IoSeek::Set);
+      return false;
+    }
+    channels_in_file = 4;
+  }
+
   switch (channels_in_file) {
     case 1: {
       outTexture->Format = TexFmt_U8;

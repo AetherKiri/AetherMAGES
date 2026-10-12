@@ -103,15 +103,19 @@ typedef struct {
   dds_caps caps;      ///< DirectDraw Surface caps
 } dds_header;
 
-std::vector<uint8_t> m_buf;  ///< Buffer the image pixels
-int m_nchans;                ///< Number of colour channels in image
-int m_nfaces;                ///< Number of cube map sides in image
-int m_Bpp;                   ///< Number of bytes per pixel
-int m_redL, m_redR;          ///< Bit shifts to extract red channel
-int m_greenL, m_greenR;      ///< Bit shifts to extract green channel
-int m_blueL, m_blueR;        ///< Bit shifts to extract blue channel
-int m_alphaL, m_alphaR;      ///< Bit shifts to extract alpha channel
-dds_header m_dds;
+/// Per-load parse state. This used to be file-global state, which raced when
+/// Profile::LoadSpritesheets fired several std::async workers through
+/// TextureLoadDDS at once (the MO8 PC boot loads ten sheets in parallel).
+struct DdsState {
+  int m_nchans = 0;                ///< Number of colour channels in image
+  int m_nfaces = 0;                ///< Number of cube map sides in image
+  int m_Bpp = 0;                   ///< Number of bytes per pixel
+  int m_redL = 0, m_redR = 0;      ///< Bit shifts to extract red channel
+  int m_greenL = 0, m_greenR = 0;  ///< Bit shifts to extract green channel
+  int m_blueL = 0, m_blueR = 0;    ///< Bit shifts to extract blue channel
+  int m_alphaL = 0, m_alphaR = 0;  ///< Bit shifts to extract alpha channel
+  dds_header m_dds{};
+};
 
 inline void calc_shifts(int mask, int& left, int& right) {
   if (mask == 0) {
@@ -131,11 +135,12 @@ inline void calc_shifts(int mask, int& left, int& right) {
   left = 8 - i;
 }
 
-bool internal_readimg(Stream* stream, uint8_t* dst, int w, int h, int d) {
-  if (m_dds.fmt.flags & DDS_PF_FOURCC) {
+bool internal_readimg(DdsState& st, Stream* stream, uint8_t* dst, int w, int h,
+                      int d) {
+  if (st.m_dds.fmt.flags & DDS_PF_FOURCC) {
     // compressed image
     int flags = 0;
-    switch (m_dds.fmt.fourCC) {
+    switch (st.m_dds.fmt.fourCC) {
       case DDS_4CC_DXT1:
         flags = squish::kDxt1;
         break;
@@ -158,7 +163,8 @@ bool internal_readimg(Stream* stream, uint8_t* dst, int w, int h, int d) {
     squish::DecompressImage(dst, w, h, &tmp[0], flags);
     tmp.clear();
     // correct pre-multiplied alpha, if necessary
-    if (m_dds.fmt.fourCC == DDS_4CC_DXT2 || m_dds.fmt.fourCC == DDS_4CC_DXT4) {
+    if (st.m_dds.fmt.fourCC == DDS_4CC_DXT2 ||
+        st.m_dds.fmt.fourCC == DDS_4CC_DXT4) {
       int k;
       for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
@@ -173,25 +179,29 @@ bool internal_readimg(Stream* stream, uint8_t* dst, int w, int h, int d) {
     // uncompressed image
 
     // HACK: shortcut for luminance
-    if (m_dds.fmt.flags & DDS_PF_LUMINANCE) {
-      return stream->Read(dst, w * m_Bpp * h);
+    if (st.m_dds.fmt.flags & DDS_PF_LUMINANCE) {
+      return stream->Read(dst, w * st.m_Bpp * h);
     }
 
     int k, pixel = 0;
     for (int z = 0; z < d; z++) {
       for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-          if (!stream->Read(&pixel, m_Bpp)) return false;
-          k = (z * h * w + y * w + x) * m_nchans;
+          if (!stream->Read(&pixel, st.m_Bpp)) return false;
+          k = (z * h * w + y * w + x) * st.m_nchans;
           dst[k + 0] =
-              (uint8_t)(((pixel & m_dds.fmt.rmask) >> m_redR) << m_redL);
+              (uint8_t)(((pixel & st.m_dds.fmt.rmask) >> st.m_redR)
+                        << st.m_redL);
           dst[k + 1] =
-              (uint8_t)(((pixel & m_dds.fmt.gmask) >> m_greenR) << m_greenL);
+              (uint8_t)(((pixel & st.m_dds.fmt.gmask) >> st.m_greenR)
+                        << st.m_greenL);
           dst[k + 2] =
-              (uint8_t)(((pixel & m_dds.fmt.bmask) >> m_blueR) << m_blueL);
-          if (m_dds.fmt.flags & DDS_PF_ALPHA)
+              (uint8_t)(((pixel & st.m_dds.fmt.bmask) >> st.m_blueR)
+                        << st.m_blueL);
+          if (st.m_dds.fmt.flags & DDS_PF_ALPHA)
             dst[k + 3] =
-                (uint8_t)(((pixel & m_dds.fmt.amask) >> m_alphaR) << m_alphaL);
+                (uint8_t)(((pixel & st.m_dds.fmt.amask) >> st.m_alphaR)
+                          << st.m_alphaL);
         }
       }
     }
@@ -200,33 +210,35 @@ bool internal_readimg(Stream* stream, uint8_t* dst, int w, int h, int d) {
 }
 
 bool TextureLoadDDS(Stream* stream, Texture* outTexture) {
+  DdsState st;
+
   stream->Seek(0, IoSeek::Set);
 
-  m_dds.fourCC = ReadLE<uint32_t>(stream);
-  m_dds.size = ReadLE<uint32_t>(stream);
-  m_dds.flags = ReadLE<uint32_t>(stream);
-  m_dds.height = ReadLE<uint32_t>(stream);
-  m_dds.width = ReadLE<uint32_t>(stream);
-  m_dds.pitch = ReadLE<uint32_t>(stream);
-  m_dds.depth = ReadLE<uint32_t>(stream);
-  m_dds.mipmaps = ReadLE<uint32_t>(stream);
+  st.m_dds.fourCC = ReadLE<uint32_t>(stream);
+  st.m_dds.size = ReadLE<uint32_t>(stream);
+  st.m_dds.flags = ReadLE<uint32_t>(stream);
+  st.m_dds.height = ReadLE<uint32_t>(stream);
+  st.m_dds.width = ReadLE<uint32_t>(stream);
+  st.m_dds.pitch = ReadLE<uint32_t>(stream);
+  st.m_dds.depth = ReadLE<uint32_t>(stream);
+  st.m_dds.mipmaps = ReadLE<uint32_t>(stream);
 
   // advance the file pointer by 44 bytes (reserved fields)
   stream->Seek(44, IoSeek::Cur);
 
   // pixel format struct
-  m_dds.fmt.size = ReadLE<uint32_t>(stream);
-  m_dds.fmt.flags = ReadLE<uint32_t>(stream);
-  m_dds.fmt.fourCC = ReadLE<uint32_t>(stream);
-  m_dds.fmt.bpp = ReadLE<uint32_t>(stream);
-  m_dds.fmt.rmask = ReadLE<uint32_t>(stream);
-  m_dds.fmt.gmask = ReadLE<uint32_t>(stream);
-  m_dds.fmt.bmask = ReadLE<uint32_t>(stream);
-  m_dds.fmt.amask = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.size = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.flags = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.fourCC = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.bpp = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.rmask = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.gmask = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.bmask = ReadLE<uint32_t>(stream);
+  st.m_dds.fmt.amask = ReadLE<uint32_t>(stream);
 
   // caps
-  m_dds.caps.flags1 = ReadLE<uint32_t>(stream);
-  m_dds.caps.flags2 = ReadLE<uint32_t>(stream);
+  st.m_dds.caps.flags1 = ReadLE<uint32_t>(stream);
+  st.m_dds.caps.flags2 = ReadLE<uint32_t>(stream);
 
   // advance the file pointer by 12 bytes (reserved fields)
   stream->Seek(12, IoSeek::Cur);
@@ -234,80 +246,86 @@ bool TextureLoadDDS(Stream* stream, Texture* outTexture) {
   // sanity checks - valid 4CC, correct struct sizes and flags which should
   // be always present, regardless of the image type, size etc., also check
   // for impossible flag combinations
-  if (m_dds.fourCC != DDS_MAKE4CC('D', 'D', 'S', ' ') || m_dds.size != 124 ||
-      m_dds.fmt.size != 32 || !(m_dds.caps.flags1 & DDS_CAPS1_TEXTURE) ||
-      !(m_dds.flags & DDS_CAPS) || !(m_dds.flags & DDS_PIXELFORMAT) ||
-      (m_dds.caps.flags2 & DDS_CAPS2_VOLUME &&
-       !(m_dds.caps.flags1 & DDS_CAPS1_COMPLEX && m_dds.flags & DDS_DEPTH)) ||
-      (m_dds.caps.flags2 & DDS_CAPS2_CUBEMAP &&
-       !(m_dds.caps.flags1 & DDS_CAPS1_COMPLEX))) {
+  if (st.m_dds.fourCC != DDS_MAKE4CC('D', 'D', 'S', ' ') ||
+      st.m_dds.size != 124 || st.m_dds.fmt.size != 32 ||
+      !(st.m_dds.caps.flags1 & DDS_CAPS1_TEXTURE) ||
+      !(st.m_dds.flags & DDS_CAPS) || !(st.m_dds.flags & DDS_PIXELFORMAT) ||
+      (st.m_dds.caps.flags2 & DDS_CAPS2_VOLUME &&
+       !(st.m_dds.caps.flags1 & DDS_CAPS1_COMPLEX &&
+         st.m_dds.flags & DDS_DEPTH)) ||
+      (st.m_dds.caps.flags2 & DDS_CAPS2_CUBEMAP &&
+       !(st.m_dds.caps.flags1 & DDS_CAPS1_COMPLEX))) {
     stream->Seek(0, IoSeek::Set);
     return false;
   }
 
   // make sure all dimensions are > 0 and that we have at least one channel
   // (for uncompressed images)
-  if (!(m_dds.flags & DDS_WIDTH) || !m_dds.width ||
-      !(m_dds.flags & DDS_HEIGHT) || !m_dds.height ||
-      ((m_dds.flags & DDS_DEPTH) && !m_dds.depth) ||
-      (!(m_dds.fmt.flags & DDS_PF_FOURCC) &&
-       !((m_dds.fmt.flags & DDS_PF_RGB) | (m_dds.fmt.flags & DDS_PF_LUMINANCE) |
-         (m_dds.fmt.flags & DDS_PF_ALPHA)))) {
+  if (!(st.m_dds.flags & DDS_WIDTH) || !st.m_dds.width ||
+      !(st.m_dds.flags & DDS_HEIGHT) || !st.m_dds.height ||
+      ((st.m_dds.flags & DDS_DEPTH) && !st.m_dds.depth) ||
+      (!(st.m_dds.fmt.flags & DDS_PF_FOURCC) &&
+       !((st.m_dds.fmt.flags & DDS_PF_RGB) |
+         (st.m_dds.fmt.flags & DDS_PF_LUMINANCE) |
+         (st.m_dds.fmt.flags & DDS_PF_ALPHA)))) {
     stream->Seek(0, IoSeek::Set);
     return false;
   }
 
   // validate the pixel format
   // TODO: support DXGI and the "wackier" uncompressed formats
-  if (m_dds.fmt.flags & DDS_PF_FOURCC && m_dds.fmt.fourCC != DDS_4CC_DXT1 &&
-      m_dds.fmt.fourCC != DDS_4CC_DXT2 && m_dds.fmt.fourCC != DDS_4CC_DXT3 &&
-      m_dds.fmt.fourCC != DDS_4CC_DXT4 && m_dds.fmt.fourCC != DDS_4CC_DXT5) {
+  if (st.m_dds.fmt.flags & DDS_PF_FOURCC &&
+      st.m_dds.fmt.fourCC != DDS_4CC_DXT1 &&
+      st.m_dds.fmt.fourCC != DDS_4CC_DXT2 &&
+      st.m_dds.fmt.fourCC != DDS_4CC_DXT3 &&
+      st.m_dds.fmt.fourCC != DDS_4CC_DXT4 &&
+      st.m_dds.fmt.fourCC != DDS_4CC_DXT5) {
     stream->Seek(0, IoSeek::Set);
     return false;
   }
 
   // determine the number of channels we have
-  if (m_dds.fmt.flags & DDS_PF_FOURCC) {
+  if (st.m_dds.fmt.flags & DDS_PF_FOURCC) {
     // squish decompresses everything to RGBA anyway
-    m_nchans = 4;
+    st.m_nchans = 4;
   } else {
-    m_nchans = ((m_dds.fmt.flags & DDS_PF_LUMINANCE) ? 1 : 3) +
-               ((m_dds.fmt.flags & DDS_PF_ALPHA) ? 1 : 0);
+    st.m_nchans = ((st.m_dds.fmt.flags & DDS_PF_LUMINANCE) ? 1 : 3) +
+                  ((st.m_dds.fmt.flags & DDS_PF_ALPHA) ? 1 : 0);
     // also calculate bytes per pixel and the bit shifts
-    m_Bpp = (m_dds.fmt.bpp + 7) >> 3;
-    if (!(m_dds.fmt.flags & DDS_PF_LUMINANCE)) {
-      calc_shifts(m_dds.fmt.rmask, m_redL, m_redR);
-      calc_shifts(m_dds.fmt.gmask, m_greenL, m_greenR);
-      calc_shifts(m_dds.fmt.bmask, m_blueL, m_blueR);
-      calc_shifts(m_dds.fmt.amask, m_alphaL, m_alphaR);
+    st.m_Bpp = (st.m_dds.fmt.bpp + 7) >> 3;
+    if (!(st.m_dds.fmt.flags & DDS_PF_LUMINANCE)) {
+      calc_shifts(st.m_dds.fmt.rmask, st.m_redL, st.m_redR);
+      calc_shifts(st.m_dds.fmt.gmask, st.m_greenL, st.m_greenR);
+      calc_shifts(st.m_dds.fmt.bmask, st.m_blueL, st.m_blueR);
+      calc_shifts(st.m_dds.fmt.amask, st.m_alphaL, st.m_alphaR);
     }
   }
 
   // fix depth, pitch and mipmaps for later use, if needed
-  if (!(m_dds.fmt.flags & DDS_PF_FOURCC && m_dds.flags & DDS_PITCH))
-    m_dds.pitch = m_dds.width * m_Bpp;
-  if (!(m_dds.caps.flags2 & DDS_CAPS2_VOLUME)) m_dds.depth = 1;
-  if (!(m_dds.flags & DDS_MIPMAPCOUNT)) m_dds.mipmaps = 1;
+  if (!(st.m_dds.fmt.flags & DDS_PF_FOURCC && st.m_dds.flags & DDS_PITCH))
+    st.m_dds.pitch = st.m_dds.width * st.m_Bpp;
+  if (!(st.m_dds.caps.flags2 & DDS_CAPS2_VOLUME)) st.m_dds.depth = 1;
+  if (!(st.m_dds.flags & DDS_MIPMAPCOUNT)) st.m_dds.mipmaps = 1;
   // count cube map faces
-  if (m_dds.caps.flags2 & DDS_CAPS2_CUBEMAP) {
-    m_nfaces = 0;
+  if (st.m_dds.caps.flags2 & DDS_CAPS2_CUBEMAP) {
+    st.m_nfaces = 0;
     for (int flag = DDS_CAPS2_CUBEMAP_POSITIVEX;
          flag <= DDS_CAPS2_CUBEMAP_NEGATIVEZ; flag <<= 1) {
-      if (m_dds.caps.flags2 & flag) m_nfaces++;
+      if (st.m_dds.caps.flags2 & flag) st.m_nfaces++;
     }
   } else
-    m_nfaces = 1;
+    st.m_nfaces = 1;
 
   TexFmt texFmt = TexFmt_RGBA;
-  if (m_nchans == 3) {
+  if (st.m_nchans == 3) {
     texFmt = TexFmt_RGB;
-  } else if (m_nchans != 4) {
+  } else if (st.m_nchans != 4) {
     texFmt = TexFmt_U8;
   }
 
-  outTexture->Init(texFmt, m_dds.width, m_dds.height);
-  internal_readimg(stream, outTexture->Buffer.data(), m_dds.width, m_dds.height,
-                   m_dds.depth);
+  outTexture->Init(texFmt, st.m_dds.width, st.m_dds.height);
+  internal_readimg(st, stream, outTexture->Buffer.data(), st.m_dds.width,
+                   st.m_dds.height, st.m_dds.depth);
 
   return true;
 }
