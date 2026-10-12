@@ -1,4 +1,7 @@
 #include "vm.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 
 #include "expression.h"
@@ -285,6 +288,48 @@ void Update(float dt) {
   CreateThreadExecTable();
   SortThreadExecTable();
 
+  // Debug/testing aid: IMPACTO_MO8_BOOTFLAGS="2361,2366" sets the given
+  // script flags once after IMPACTO_MO8_BOOTFRAME frames (default 300), or
+  // repeatedly every IMPACTO_MO8_BOOTFLAG_EVERY frames when that is set.
+  // Emulates the native subsystem event the original engine raises at boot
+  // (e.g. Steam stats/achievement callback) that the startup script polls.
+  {
+    static const bool isMo8 = Profile::Vm::GameInstructionSet ==
+                              Impacto::Vm::InstructionSet::MO8;
+    static const char* spec = isMo8 ? getenv("IMPACTO_MO8_BOOTFLAGS")
+                                    : (const char*)nullptr;
+    if (spec != nullptr) {
+      static const int every = [] {
+        const char* e = getenv("IMPACTO_MO8_BOOTFLAG_EVERY");
+        return e ? atoi(e) : 0;
+      }();
+      static int bootFrame = [] {
+        const char* f = getenv("IMPACTO_MO8_BOOTFRAME");
+        return f ? atoi(f) : 300;
+      }();
+      static int frameCounter = 0;
+      static bool bootFlagsDone = false;
+      frameCounter++;
+      bool doSet = !bootFlagsDone && frameCounter >= bootFrame;
+      if (every > 0) doSet = frameCounter >= bootFrame && (frameCounter % every) == 0;
+      if (doSet) {
+        char buf[256];
+        strncpy(buf, spec, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = 0;
+        for (char* tok = strtok(buf, ","); tok; tok = strtok(nullptr, ",")) {
+          int flagId = atoi(tok);
+          if (flagId > 0) {
+            SetFlag(flagId, 1);
+            ImpLog(LogLevel::Info, LogChannel::VM,
+                   "MO8 boot flag override: set flag {:d} at frame {:d}\n",
+                   flagId, frameCounter);
+          }
+        }
+        bootFlagsDone = true;
+      }
+    }
+  }
+
   int cnt = 0;
   while (ThreadTable[cnt]) {
     RunThread(ThreadTable[cnt++], dt);
@@ -481,6 +526,20 @@ void RunThread(Sc3VmThread* thread, float dt) {
 #endif
 
     scrVal = thread->GetIp();
+
+    // Optional instruction trace (engine thread only): IMPACTO_VM_TRACE=<file>
+    {
+      static FILE* traceFile = []() -> FILE* {
+        const char* path = getenv("IMPACTO_VM_TRACE");
+        if (path == nullptr) return (FILE*)-1;
+        FILE* f = fopen(path, "w");
+        return f != nullptr ? f : (FILE*)-1;
+      }();
+      if (traceFile != (FILE*)-1) {
+        fprintf(traceFile, "th%u b%u %06x %02x%02x\n", thread->Id,
+                thread->ScriptBufferId, scriptIp, *scrVal, *(scrVal + 1));
+      }
+    }
     opcodeGrp = *scrVal;
     if ((uint8_t)opcodeGrp == 0xFE) {
       thread->IpOffset += 1;
@@ -610,8 +669,8 @@ uint32_t MsbGetStrAddress(uint32_t msbBufferId, uint32_t mesNum) {
     }
   }
 
-  uint32_t stringOffset =
-      SDL_Swap32LE(UnalignedRead<uint32_t>(&tableAdrRel[1 * sizeof(uint32_t)]));
+  uint32_t stringOffset = SDL_Swap32LE(UnalignedRead<uint32_t>(
+      &tableAdrRel[(1 + Profile::Vm::MsbLanguage) * sizeof(uint32_t)]));
 
   return stringAreaStartRel + stringOffset;
 }
