@@ -18,6 +18,7 @@ void Configure() {
   UseReturnIds = EnsureGetMember<bool>("UseReturnIds");
   TryGetMember<bool>("UseMsbStrings", UseMsbStrings);
   TryGetMember<bool>("UseSeparateMsbArchive", UseSeparateMsbArchive);
+  TryGetMember<int>("MsbLanguage", MsbLanguage);
   TryGetMember<bool>("RestartMaskUsesThreadAlpha", RestartMaskUsesThreadAlpha);
 
   ScrWorkChaStructSize = EnsureGetMember<int>("ScrWorkChaStructSize");

@@ -16,6 +16,9 @@ inline Impacto::Vm::InstructionSet GameInstructionSet =
 inline bool UseReturnIds = true;
 inline bool UseMsbStrings = false;
 inline bool UseSeparateMsbArchive = false;
+// 0-based language column used for MSB string lookup (original reads the
+// (language+1)-th column of each MSB row; DAT_01643684 = active language)
+inline int MsbLanguage = 0;
 inline bool RestartMaskUsesThreadAlpha = false;
 
 inline int ScrWorkChaStructSize = 0;

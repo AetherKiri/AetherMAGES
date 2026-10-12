@@ -21,6 +21,9 @@ root.Vm = {
     GameInstructionSet = InstructionSet.MO8,
     UseReturnIds = true,
     UseMsbStrings = true,
+    -- PC CHS release stores the localized strings in the second language
+    -- column of each MSB row (original: language index 1, DAT_01643684)
+    MsbLanguage = 1,
 
     ScrWorkChaStructSize = 40,
     ScrWorkChaOffsetStructSize = 10,
@@ -34,6 +37,7 @@ root.Vm = {
 };
 
 include(root.BasePaths.RootProfilesDir .. '/common/scriptinput.lua');
+include(root.BasePaths.RootProfilesDir .. '/mo8/scriptinput.lua');
 include(root.BasePaths.RootProfilesDir .. '/common/scriptvars.lua');
 include(root.BasePaths.RootProfilesDir .. '/mo8/scriptvars.lua');
 include(root.BasePaths.RootProfilesDir .. '/mo8/savedata.lua');
