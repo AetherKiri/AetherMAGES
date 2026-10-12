@@ -566,16 +566,32 @@ VmInstruction(InstDebugPrint) {
 }
 VmInstruction(InstSystemMes) {
   StartInstruction;
-  PopUint8(mode);
+  PopUint8(rawMode);
+  uint8_t mode = rawMode;
   uint32_t sysMesId = thread->Id;
+  bool exprOperand = false;
   switch (Profile::Vm::GameInstructionSet) {
     default:
       break;
     case InstructionSet::Dash:
-    case InstructionSet::CC:
+    case InstructionSet::CC: {
       PopUint8(id);
       sysMesId = id;
       break;
+    }
+    case InstructionSet::MO8: {
+      // MO8 packs the box id and an operand-form flag into the mode byte
+      // (original 0x448D00): bit7 = operands are expressions; after stripping
+      // bit7, values > 9 address system message box 1 (mode + 10).
+      exprOperand = (rawMode & 0x80) != 0;
+      mode = rawMode & 0x7F;
+      if (mode > 9) {
+        mode -= 10;
+        sysMesId = 1;
+      } else {
+        sysMesId = 0;
+      }
+    } break;
   }
 
   auto activeBox = [&]() -> UI::SysMesBox* {
@@ -600,21 +616,48 @@ VmInstruction(InstSystemMes) {
       ScrWork[SW_SYSMESANIMCTF] = 2 * box->MessageCount + 33;
     } break;
     case 3: {  // SystemMesSetMes
-      PopUint16(sysMesStrNum);
       UI::SysMesBox* box = activeBox();
-      if (!box) break;
-      const uint32_t message =
-          ScriptGetStrAddress(thread->ScriptBufferId, sysMesStrNum);
-      box->AddMessage(
-          {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+      if (!box) {
+        // consume operands even without a box
+        if (exprOperand) {
+          PopExpression(unused);
+        } else {
+          PopUint16(sysMesStrNum);
+        }
+        break;
+      }
+      if (exprOperand) {
+        PopMsbString(message);
+        box->AddMessage(
+            {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+      } else {
+        PopUint16(sysMesStrNum);
+        const uint32_t message =
+            ScriptGetStrAddress(thread->ScriptBufferId, sysMesStrNum);
+        box->AddMessage(
+            {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+      }
     } break;
     case 4: {  // SystemMesSetSel
-      PopUint16(sysSelStrNum);
       UI::SysMesBox* box = activeBox();
-      if (!box) break;
-      auto message = ScriptGetStrAddress(thread->ScriptBufferId, sysSelStrNum);
-      box->AddChoice(
-          {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+      if (!box) {
+        if (exprOperand) {
+          PopExpression(unused);
+        } else {
+          PopUint16(sysSelStrNum);
+        }
+        break;
+      }
+      if (exprOperand) {
+        PopMsbString(message);
+        box->AddChoice(
+            {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+      } else {
+        PopUint16(sysSelStrNum);
+        auto message = ScriptGetStrAddress(thread->ScriptBufferId, sysSelStrNum);
+        box->AddChoice(
+            {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+      }
     } break;
     case 5: {  // SystemMesMain
       UI::SysMesBox* box = activeBox();
@@ -663,20 +706,6 @@ VmInstruction(InstSystemMes) {
       ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,
                  "STUB instruction SystemMes(mode: {:d})\n", mode);
       break;
-    case 0x83: {
-      PopMsbString(message);
-      UI::SysMesBox* box = activeBox();
-      if (!box) break;
-      box->AddMessage(
-          {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
-    } break;
-    case 0x84: {  // SystemMesSetSel
-      PopMsbString(message);
-      UI::SysMesBox* box = activeBox();
-      if (!box) break;
-      box->AddChoice(
-          {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
-    } break;
     default:
       ImpLog(LogLevel::Warning, LogChannel::VMStub,
              "Unknown mode for instruction SystemMes(mode: {:d})\n", mode);
