@@ -134,6 +134,15 @@ typedef struct impacto_host_desc_t {
 int32_t impacto_host_create(const impacto_host_desc_t* desc, void** out_host);
 void impacto_host_destroy(void* host);
 
+/* Boots the engine for a game. game_id_utf8 selects the game:
+ *   - a game id registered in data_dir's gamedefinitions.lua (e.g. "mo8",
+ *     "chlcc", "cclcc", "mo6tw", ...);
+ *   - "auto": resolve the game from the game root using the standard MAGES.
+ *     install layout (<gamedata>/<game-id>/script.*); fails if no registered
+ *     game matches;
+ *   - "launcher": boot without a game (data-free loop that renders empty
+ *     frames; the headless smoke path).
+ * gamedata_dir_utf8 may be null/empty to use the game root itself. */
 int32_t impacto_host_open_game(void* host, const char* game_root_utf8,
                                const char* game_id_utf8,
                                const char* gamedata_dir_utf8);

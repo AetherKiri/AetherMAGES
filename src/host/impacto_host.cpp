@@ -5,6 +5,7 @@
 #include "../game.h"
 #include "../log.h"
 #include "../profile/profile.h"
+#include "../profile/gamedefinitions.h"
 #include "../userconfig.h"
 #include "../audio/host/hostaudiobridge.h"
 #include "../renderer/renderer.h"
@@ -19,6 +20,8 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cctype>
+#include <optional>
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -222,6 +225,64 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
                              std::string gameId, std::string gamedataDir);
 void TeardownEngine(HostState* st);
 
+// Every shipped MAGES. profile mounts its archives from
+// <gamedata>/<game-id>/ with a script.* or system.* archive at the root of
+// that subdirectory. Candidates are taken from the gamedefinitions.lua
+// registry so an unrecognised directory never wins; ties resolve by the
+// definition's launcher order (then id) to stay deterministic.
+static bool HasScriptOrSystemArchive(const std::filesystem::path& gameDir) {
+  std::error_code ec;
+  std::filesystem::directory_iterator it(gameDir, ec);
+  if (ec) return false;
+  for (auto const& entry : it) {
+    std::error_code entryEc;
+    if (!entry.is_regular_file(entryEc) || entryEc) continue;
+    std::string name = entry.path().filename().string();
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char c) { return (char)std::tolower(c); });
+    if (name.rfind("script.", 0) == 0 || name.rfind("system.", 0) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static std::optional<std::string> DetectGameId(
+    const std::filesystem::path& gamedataDir) {
+  struct Candidate {
+    std::string id;
+    int launcherOrderId;
+  };
+  std::vector<Candidate> candidates;
+  std::error_code ec;
+  for (auto const& [id, definition] : Impacto::Profile::GameDefinitions) {
+    const std::filesystem::path gameDir = gamedataDir / id;
+    if (!std::filesystem::is_directory(gameDir, ec)) continue;
+    if (!HasScriptOrSystemArchive(gameDir)) continue;
+    candidates.push_back({id, definition.LauncherOrderId});
+  }
+  if (candidates.empty()) return std::nullopt;
+  std::sort(candidates.begin(), candidates.end(),
+            [](Candidate const& a, Candidate const& b) {
+              if (a.launcherOrderId != b.launcherOrderId) {
+                return a.launcherOrderId < b.launcherOrderId;
+              }
+              return a.id < b.id;
+            });
+  if (candidates.size() > 1) {
+    std::string others;
+    for (size_t i = 1; i < candidates.size(); ++i) {
+      if (i > 1) others += ", ";
+      others += candidates[i].id;
+    }
+    ImpLog(Impacto::LogLevel::Warning, Impacto::LogChannel::General,
+           "Host bridge: multiple MAGES. games found in game root; using "
+           "\"{:s}\" (also present: {:s})\n",
+           candidates.front().id, others);
+  }
+  return candidates.front().id;
+}
+
 ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
                              std::string gameId, std::string gamedataDir) {
   using namespace Impacto;
@@ -229,11 +290,13 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
 
   Host::HostBridge::Get().Reset();
 
-  // "launcher" boots the engine without an active game: it renders the
-  // (ImGui-free) launcher loop, i.e. an empty frame per tick. That is the
-  // no-game-data smoke path for hosts; any other id selects the profile.
+  // Game selection: "launcher" boots the engine without an active game (an
+  // empty frame per tick, the no-game-data smoke path); "auto" (or an empty
+  // id) resolves the game from the gamedefinitions.lua registry against the
+  // standard MAGES. install layout; any other id must name a registered
+  // game.
   const bool launcherMode = (gameId == "launcher");
-  if (gameId.empty()) gameId = "mo8";
+  const bool autoDetect = gameId.empty() || gameId == "auto";
 
   std::error_code ec;
   std::filesystem::path dataDir =
@@ -314,6 +377,29 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
     Profile::Init();
     Profile::Configure();
 
+    // Resolve the game id before anything engine-side is created: the
+    // registry is pure Lua state at this point, so an unknown id or an
+    // undetected root fails without a teardown-worthy half-boot.
+    if (!launcherMode) {
+      if (autoDetect) {
+        auto detected = DetectGameId(gamedataPath);
+        if (!detected) {
+          throw std::runtime_error(
+              "no MAGES. game data found in \"" + gamedataPath.string() +
+              "\" (expected a <game-id>/script.* subdirectory of a game "
+              "registered in gamedefinitions.lua)");
+        }
+        gameId = *detected;
+        ImpLog(LogLevel::Info, LogChannel::General,
+               "Host bridge: auto-detected game \"{:s}\"\n", gameId);
+      } else if (!Profile::GameDefinitions.contains(gameId)) {
+        throw std::runtime_error("game id \"" + gameId +
+                                 "\" is not registered in "
+                                 "gamedefinitions.lua");
+      }
+      UserConfig::SetActiveGame(gameId);
+    }
+
     // Force the embedded configuration: software-friendly OpenGL renderer,
     // audio routed into the host FIFO bridge instead of a device backend.
     UserConfig::AdvancedSettings.ActiveRenderer = RendererType::OpenGL;
@@ -322,9 +408,6 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
     UserConfig::CommonSettings.LogLvl = st->Level;
     UserConfig::CommonSettings.LoggingToConsole = true;
     UserConfig::CommonSettings.LoggingToFile = false;
-    if (!launcherMode) {
-      UserConfig::SetActiveGame(gameId);
-    }
     UserConfig::PatchProfileOverride.clear();
 
     auto& gameSettings = UserConfig::ActiveGameSettings();
