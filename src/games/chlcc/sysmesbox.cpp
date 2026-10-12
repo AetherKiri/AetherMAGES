@@ -105,6 +105,17 @@ void SysMesBox::Show() {
     star.Angle = ScrWorkAngleToRad(CALCrnd(8192) << 3);
     star.RotationSpeed = ScrWorkAngleToRad(CALCrnd(4096) - 2048);
   }
+
+  // Keyboard/gamepad confirmation path: focus the first choice so
+  // ControlType::OK activates it (Button::UpdateInput requires focus; mouse
+  // hover focusing is handled separately by Group::UpdateInput). The
+  // original engine handles sysmesbox PAD input natively (0x42D990).
+  if (ChoiceCount > 0 && !ChoiceItems->Children.empty()) {
+    Widget* first = ChoiceItems->Children.front();
+    FocusStart[0] = first;
+    CurrentlyFocusedElement = first;
+    first->HasFocus = true;
+  }
 }
 
 void SysMesBox::Hide() {
