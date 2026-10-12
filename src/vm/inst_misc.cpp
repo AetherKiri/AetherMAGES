@@ -521,10 +521,19 @@ VmInstruction(InstTitleMenuNew) {
   StartInstruction;
   PopUint8(type);
   switch (type) {
-    case 0:  // Init
+    case 0: {  // Init
+      if (Profile::Vm::GameInstructionSet == InstructionSet::MO8) {
+        // Original raises the title UI here: enter "press to start" and let
+        // the native MO8 title menu (driven by SF_TITLEMODE) show itself.
+        ScrWork[SW_TITLEMODE] = 1;
+        ScrWork[SW_TITLEDISPCT] = 0;
+        ScrWork[SW_TITLEMOVIECT] = 0;
+        SetFlag(SF_TITLEMODE, 1);
+        SetFlag(SF_TITLEEND, 0);
+      }
       ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,
                  "STUB instruction TitleMenu(type: Init)\n");
-      break;
+    } break;
     case 1:  // Main
       switch (Profile::Vm::GameInstructionSet) {
         default:
