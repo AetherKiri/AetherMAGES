@@ -95,35 +95,29 @@ void PlainDialogueBox::UpdateInput(float dt) {
   UpdateControlButtons(dt);
 }
 
-void PlainDialogueBox::Update(float dt) {
-  NametagDisplayInst->Update(dt);
-  if (HasSpeakerPortraits) {
-    for (int i = 0; i < std::ssize(SpeakerPortraits); i++) {
-      int bufId = ScrWork[SW_FACE1SURF + i];
-      SpeakerPortraits[bufId].Show =
-          SpeakerPortraits[bufId].FaceId >= 0 &&
-          ScrWork[SW_FACEEX1NO + 5 * i] == SpeakerPortraits[bufId].FaceId;
-      SpeakerPortraits[bufId].Update(dt);
-    }
-  }
-}
-
 void PlainDialogueBox::Render(const DialoguePageMode mode,
                               const NameInfo& nameInfo, glm::vec4 tint) {
   tint = glm::vec4(glm::vec3(ScrWorkGetColor(SW_MESWINDOW_COLOR)), tint.a);
 
   if (mode == DPM_ADV) {
-    if (!nameInfo.Name.empty() && HasSpeakerPortraits) {
-      // MO8: draw the speaker face portrait underneath the box; it shows
-      // through the box's semi-transparent left area, ribbon on top
-      for (int i = 0; i < std::ssize(SpeakerPortraits); i++) {
-        int bufId = ScrWork[SW_FACE1SURF + i];
-        SpeakerPortraits[bufId].Render();
-      }
-    }
-
     Renderer->DrawSprite(ADVBoxSprite, ADVBoxPos, tint);
     RenderControlButtons(tint);
+
+    if (!nameInfo.Name.empty()) {
+      if (HasSpeakerPortraits) {
+        // Draw Face
+        for (int i = 0; i < std::ssize(SpeakerPortraits); i++) {
+          int bufId = ScrWork[SW_FACE1SURF + i];
+          SpeakerPortraits[bufId].UpdateState(i);
+
+          SpeakerPortraits[bufId].Tint = tint;
+          SpeakerPortraits[bufId].Position +=
+              glm::vec2(SpeakerPortraitBaseOffsetX, SpeakerPortraitBaseOffsetY);
+
+          SpeakerPortraits[bufId].Render(-1);
+        }
+      }
+    }
 
     NametagDisplayInst->Render(nameInfo, tint);
 

@@ -478,69 +478,17 @@ void Character2D::Render(const int layer) {
   }
 }
 
-void FacePortrait2D::LoadAsync(int faceId) {
-  if (FaceId == faceId) return;
+void CharacterPortrait2D::UpdateState(const int chaId) {
+  const glm::vec2 resolutionScale = {Profile::Game::DesignWidth / 1280.0f,
+                                     Profile::Game::DesignHeight / 720.0f};
 
-  Io::Stream* stream;
-  int64_t err = Io::VfsOpen("face", faceId, &stream);
-  if (err != IoError_OK) {
-    ImpLog(LogLevel::Error, LogChannel::General,
-           "FacePortrait2D: failed to open face file {:d}\n", faceId);
-    return;
-  }
-  Texture tex;
-  bool ok = tex.Load(stream);
-  delete stream;
-  if (!ok) {
-    ImpLog(LogLevel::Error, LogChannel::General,
-           "FacePortrait2D: failed to decode face file {:d}\n", faceId);
-    return;
-  }
+  Show = GetFlag(SF_FACEEX1DISP + chaId);
+  Face = ScrWork[SW_FACEEX1FACE + 5 * chaId] << 16;
+  Position =
+      glm::vec2(ScrWork[SW_FACEPOSX], ScrWork[SW_FACEPOSY]) * resolutionScale;
 
-  Renderer->FreeTexture(FaceSheet.Texture);
-  FaceTexture = std::move(tex);
-  FaceSheet.Texture = FaceTexture.Submit();
-  FaceSheet.DesignWidth = (float)FaceTexture.Width;
-  FaceSheet.DesignHeight = (float)FaceTexture.Height;
-  // Frame 0: first quarter of the strip (per-expression frames)
-  FaceSprite.Sheet = FaceSheet;
-  FaceSprite.Bounds =
-      RectF(0.0f, 0.0f, std::min(FaceTexture.Width / 4, 512),
-            (float)FaceTexture.Height);
-  FaceId = faceId;
-  Alpha = 0.0f;
-}
-
-void FacePortrait2D::Unload() {
-  if (FaceId < 0) return;
-  Renderer->FreeTexture(FaceSheet.Texture);
-  FaceSheet.Texture = 0;
-  FaceSheet.DesignWidth = 0.0f;
-  FaceSheet.DesignHeight = 0.0f;
-  FaceTexture = Texture{};
-  FaceSprite = Sprite{};
-  FaceId = -1;
-  Show = false;
-  Alpha = 0.0f;
-}
-
-void FacePortrait2D::Update(float dt) {
-  if (!Show || FaceId < 0) return;
-  if (Alpha < 1.0f) Alpha = std::min(1.0f, Alpha + dt * 4.0f);
-}
-
-void FacePortrait2D::Render() const {
-  if (!Show || FaceId < 0 || Alpha <= 0.0f) return;
-
-  // Face art is authored at 1280x720 design resolution; the strip frame is
-  // drawn scaled to the current design resolution, bottom-left anchored.
-  float const scale = Profile::Game::DesignWidth / 1280.0f;
-  RectF const dest(0.0f,
-                   Profile::Game::DesignHeight -
-                       FaceSprite.Bounds.Height * scale,
-                   FaceSprite.Bounds.Width * scale,
-                   FaceSprite.Bounds.Height * scale);
-  Renderer->DrawSprite(FaceSprite, dest, glm::vec4(1.0f, 1.0f, 1.0f, Alpha));
+  Scale = {1.0f, 1.0f};
+  Rotation = glm::quat();
 }
 
 }  // namespace Impacto

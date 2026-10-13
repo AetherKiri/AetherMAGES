@@ -1,7 +1,6 @@
 root.Sprites["ADVBox"] = {
     Sheet = "MesBox",
-    Bounds = { X = 0, Y = 0, Width = 1920, Height = 330 },
-    BaseScale = {X = 1.5, Y = 1.5}
+    Bounds = { X = 0, Y = 0, Width = 1920, Height = 330 }
 };
 
 root.Dialogue = {
@@ -13,7 +12,7 @@ root.Dialogue = {
     REVOutlineMode = 2,
     REVNameOutlineMode = 2,
     ADVBoxSprite = "ADVBox",
-    ADVBoxPos = { X = 0, Y = 750 },
+    ADVBoxPos = { X = 0, Y = 760 },
     FadeOutDuration = 0.33,
     FadeInDuration = 0.33,
     TextFadeInDuration = 0.33,
@@ -116,53 +115,44 @@ MakeAnimation({
 root.Sprites["AutoButton"] = {
     Sheet = "MesBox",
     Bounds = { X = 770, Y = 330, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["AutoButtonActive"] = {
     Sheet = "MesBox",
     Bounds = { X = 846, Y = 404, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["SkipButton"] = {
     Sheet = "MesBox",
     Bounds = { X = 618, Y = 404, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["SkipButtonActive"] = {
     Sheet = "MesBox",
     Bounds = { X = 618, Y = 330, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["BacklogButton"] = {
     Sheet = "MesBox",
     Bounds = { X = 770, Y = 404, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["BacklogButtonActive"] = {
     Sheet = "MesBox",
     Bounds = { X = 846, Y = 330, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["MenuButton"] = {
     Sheet = "MesBox",
     Bounds = { X = 694, Y = 404, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["MenuButtonActive"] = {
     Sheet = "MesBox",
     Bounds = { X = 694, Y = 330, Width = 68, Height = 66 },
-    BaseScale = {X = 1.5, Y = 1.5}
 };
 
 root.Sprites["NametagSprite"] = {
     Sheet = "MesBox",
-    Bounds = { X = 0, Y = 340, Width = 420, Height = 90 },
-    BaseScale = {X = 1.5, Y = 1.5}
+    Bounds = { X = 0, Y = 340, Width = 420, Height = 90 }
 };

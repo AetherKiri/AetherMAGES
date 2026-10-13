@@ -90,10 +90,9 @@ struct TextModeInfo {
   };
   NameAlignmentType NameAlignment = NameAlignmentType::Center;
 
-  // MO8: length of the fixed name band (the name ribbon) the name is laid
-  // out in when UseNameLengthL is set
+  // Idk what these are either
   bool UseNameLengthL = false;
-  float NameLengthL = 0.0f;
+  uint16_t NameLengthL = 0;
 };
 inline std::array<TextModeInfo, 10> TextModesInfo;
 

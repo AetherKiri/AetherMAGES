@@ -104,27 +104,12 @@ class Character2D : public Loadable<Character2D, bool, uint32_t> {
   std::vector<uint16_t> MvlIndices;
 };
 
-class FacePortrait2D {
+class CharacterPortrait2D : public Character2D {
  public:
-  // MO8 (Innocent Fille) speaker portrait: a PNG strip (4 expression frames)
-  // from the "face" mount, drawn at the bottom-left of the ADV box.
-  int FaceId = -1;  // currently loaded face (mpk file id)
-
-  bool Show = false;
-  float Alpha = 0.0f;
-
-  void LoadAsync(int faceId);
-  void Unload();
-  void Update(float dt);
-  void Render() const;
-
- private:
-  Texture FaceTexture;
-  SpriteSheet FaceSheet;
-  Sprite FaceSprite;
+  void UpdateState(int chaId) override;
 };
 
 inline std::array<Character2D, MaxCharacters2D> Characters2D;
-inline std::array<FacePortrait2D, 2> SpeakerPortraits;
+inline std::array<CharacterPortrait2D, 2> SpeakerPortraits;
 
 }  // namespace Impacto

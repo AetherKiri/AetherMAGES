@@ -532,12 +532,16 @@ VmInstruction(InstFACEload) {
       if (((faceId & 0xFFFF0000) >> 16) == 0) {
         faceId = (ScrWork[SW_FACEEX1FACE + 5 * actualBufId] << 16) | faceId;
       }
-      if (ScrWork[SW_FACEEX1NO + 5 * actualBufId] != (faceId & 0xFFFF)) {
+      if (SpeakerPortraits[chaBufId].Status == LoadStatus::Loading) {
+        ResetInstruction;
+        BlockThread;
+      } else if (ScrWork[SW_FACEEX1NO + 5 * actualBufId] != (faceId & 0xFFFF)) {
         ScrWork[SW_FACEEX1NO + 5 * actualBufId] = faceId & 0xFFFF;
         ScrWork[SW_FACEEX1FACE + 5 * actualBufId] = faceId >> 16;
-        // MO8: face.mpk holds PNG expression strips, loaded synchronously
-        // (the original blocks the thread during the load as well)
-        SpeakerPortraits[chaBufId].LoadAsync(faceId & 0xFFFF);
+        SpeakerPortraits[chaBufId].MountPoint = "face";
+        SpeakerPortraits[chaBufId].LoadAsync(faceId);
+        ResetInstruction;
+        BlockThread;
       }
     } break;
   }
@@ -549,7 +553,9 @@ VmInstruction(InstFACErelease) {
   bufferId = GetBufferId(bufferId) - Profile::Vm::SpeakerPortraitsScrWorkOffset;
   int surfId = ScrWork[SW_FACE1SURF + bufferId];
   ScrWork[SW_FACEEX1NO + 5 * bufferId] = 0xFFFF;
-  SpeakerPortraits[surfId].Unload();
+  if (SpeakerPortraits[surfId].Status == LoadStatus::Loaded) {
+    SpeakerPortraits[surfId].Unload();
+  }
 }
 
 }  // namespace Vm
