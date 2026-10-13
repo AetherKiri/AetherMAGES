@@ -539,7 +539,7 @@ VmInstruction(InstMes) {
   PopExpression(characterId);
   if (acted) animationId = ExpressionEval(thread);
 
-  if (characterId == 32) characterId = 0;
+  if (!acted && characterId == 32) characterId = 0;
   // Original InstMes (Game.exe 0x441630): the line id slot is a plain u16
   // label number only in the non-MSB path; when the MSB bit is set the id is
   // a full expression evaluated in place (FUN_0041db30 + FUN_00444fe0
@@ -745,7 +745,7 @@ VmInstruction(InstSetMesModeFormat) {
     uint16_t RubyDispMode;
     uint16_t LinefeedSpacing;
     uint16_t NamePosFlags;
-    uint16_t NameLengthL;  // Idk what this is either
+    uint16_t NameLengthL;  // Minimum name band width when flags bit 3 is set
   };
 
   StartInstruction;
@@ -806,7 +806,7 @@ VmInstruction(InstSetMesModeFormat) {
       static_cast<TextModeInfo::NameAlignmentType>(info.NamePosFlags & 0b111));
   setVal(dest.UseNameLengthL, UseNameLengthL,
          (info.NamePosFlags & 0b1000) != 0);
-  setVal(dest.NameLengthL, NameLengthL, info.NameLengthL);
+  setVal(dest.NameLengthL, NameLengthL, info.NameLengthL * designScale.x);
 }  // namespace Vm
 VmInstruction(InstSetNGmoji) {
   StartInstruction;
@@ -883,6 +883,7 @@ VmInstruction(InstMessWindow) {
 
         if (ScrWork[currentPage.Id + SW_MESWINDOW0ALPHA] == 0) {
           currentPage.RenderName = false;
+          currentPage.PortraitSpeakerMask = 0;
         }
 
         BlockThread;
@@ -909,6 +910,7 @@ VmInstruction(InstMessWindow) {
       currentPage.FadeAnimation.Finish();
       currentPage.Clear();
       currentPage.RenderName = false;
+      currentPage.PortraitSpeakerMask = 0;
     } break;
 
     case 5: {  // CloseEx
@@ -932,6 +934,7 @@ VmInstruction(InstMessWindow) {
       if (!currentPage.FadeAnimation.IsIn()) {
         if (ScrWork[dialoguePageId + SW_MESWINDOW0ALPHA] == 0) {
           currentPage.RenderName = false;
+          currentPage.PortraitSpeakerMask = 0;
         }
 
         currentPage.Clear();

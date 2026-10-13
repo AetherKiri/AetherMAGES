@@ -483,12 +483,53 @@ void CharacterPortrait2D::UpdateState(const int chaId) {
                                      Profile::Game::DesignHeight / 720.0f};
 
   Show = GetFlag(SF_FACEEX1DISP + chaId);
-  Face = ScrWork[SW_FACEEX1FACE + 5 * chaId] << 16;
+  UpdateFace(ScrWork[SW_FACEEX1FACE + 5 * chaId]);
+  Tint = ScrWorkGetColor(SW_FACEEX1FILTER + 5 * chaId);
   Position =
       glm::vec2(ScrWork[SW_FACEPOSX], ScrWork[SW_FACEPOSY]) * resolutionScale;
 
   Scale = {1.0f, 1.0f};
   Rotation = glm::quat();
+
+  static const bool portraitTrace = getenv("IMPACTO_PORTRAIT_TRACE") != nullptr;
+  if (portraitTrace &&
+      Profile::Vm::GameInstructionSet == Vm::InstructionSet::MO8) {
+    const int no = ScrWork[SW_FACEEX1NO + 5 * chaId];
+    const int face = ScrWork[SW_FACEEX1FACE + 5 * chaId];
+    static std::array<std::array<int, 6>, 2> last{};
+    const std::array<int, 6> state = {
+        static_cast<int>(Status), Show, no, face,
+        ScrWork[SW_FACEPOSX], ScrWork[SW_FACEPOSY]};
+    if (last[chaId] != state) {
+      last[chaId] = state;
+      ImpLog(LogLevel::Warning, LogChannel::General,
+             "[portraittrace] slot={} status={} show={} no={} face={} "
+             "pos=({}, {}) vertices={} indices={}\n",
+             chaId, static_cast<int>(Status), Show, no, face,
+             Position.x, Position.y, MvlVertices.size(), MvlIndices.size());
+    }
+  }
+}
+
+void CharacterPortrait2D::UpdateFace(int face) {
+  Face = face << 16;
+  LipFrame = 0;
+  EyeFrame = 0;
+  if (Profile::Vm::GameInstructionSet != Vm::InstructionSet::MO8) {
+    UpdateStatesToDraw();
+  } else if (Status == LoadStatus::Loaded) {
+    // MO8 portraits use the base expression and optional L1, without blinking.
+    MvlIndices.clear();
+    StatesToDraw = {face, 0x40000000 | (face << 8)};
+    for (int id : StatesToDraw) {
+      if (auto it = States.find(id); it != States.end()) {
+        const auto& indices =
+            std::get<Character2DState::MVLData>(it->second.Data).Indices;
+        MvlIndices.insert(MvlIndices.end(), indices.get(),
+                          indices.get() + it->second.Count);
+      }
+    }
+  }
 }
 
 }  // namespace Impacto

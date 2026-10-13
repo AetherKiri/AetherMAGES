@@ -1,5 +1,8 @@
 #include "font.h"
 
+#include <cstdlib>
+#include <set>
+
 #include "../../log.h"
 #include "../../profile/game.h"
 #include "../../renderer/renderer.h"
@@ -77,110 +80,107 @@ void SingleSheetFont::DrawProcessedText(
   const size_t glyphCount = visibleGlyphIds.size();
   if (glyphCount == 0) return;
 
-  const size_t vertexCount = glyphCount * 4;
-  const size_t indexCount = glyphCount * 6;
-  std::vector<VertexBufferSprites> vertices(vertexCount);
-  std::vector<uint16_t> indices;
-
-  FillGlyphIndices(indices, static_cast<uint16_t>(glyphCount));
-
-  for (size_t i = 0; i < glyphCount; i++) {
-    const ProcessedTextGlyph glyph = text[visibleGlyphIds[i]];
-
-    const CornersQuad dest = glyph.DestRect;
-    const CornersQuad destUV = GetGlyph(glyph.CharId).NormalizedBounds();
-    const CornersQuad maskUV = CornersQuad(dest).Scale(
-        {1.0f / Profile::Game::DesignWidth, 1.0f / Profile::Game::DesignHeight},
-        {0.0f, 0.0f});
-    glm::vec4 color = RgbIntToFloat(glyph.Colors.TextColor);
-    color.a =
-        ApplyOpacityCurve(glyph.Opacity * opacity, ForegroundOpacityCurve);
-
-    InsertQuad(std::span<VertexBufferSprites, 4>(vertices.begin() + i * 4, 4),
-               dest, destUV, color, maskUV);
-  }
-  uint16_t maxIndex = (uint16_t)vertexCount;
-
-  if (outlineMode != RendererOutlineMode::None) {
-    // Add outline to the front of the buffers
-    vertices.insert(vertices.end(), vertices.begin(), vertices.end());
-
-    indices.reserve(indexCount * 2);
-    std::transform(indices.begin(), indices.end(), std::back_inserter(indices),
-                   [maxIndex](uint16_t index) { return index + maxIndex; });
-    maxIndex += (uint16_t)vertexCount;
-
-    // Set the color of the outline
-    for (size_t i = 0; i < glyphCount; i++) {
-      const ProcessedTextGlyph glyph = text[visibleGlyphIds[i]];
-      glm::vec4 color = RgbIntToFloat(glyph.Colors.OutlineColor);
-      color.a = ApplyOpacityCurve(glyph.Opacity * outlineOpacity,
-                                  OutlineOpacityCurve);
-      const auto glyphStart = vertices.begin() + i * 4;
-      const auto glyphEnd = glyphStart + 4;
-      std::transform(glyphStart, glyphEnd, glyphStart, [color](auto vertex) {
-        vertex.Tint = color;
-        return vertex;
-      });
+  // Sample the actual draw inputs both during reveal and at full opacity.
+  // Bound and deduplicate this opt-in trace so it is usable in long runs.
+  static const bool textTrace = std::getenv("IMPACTO_TEXT_TRACE") != nullptr;
+  if (textTrace && FirstPageGlyphs != 0) {
+    static std::set<uint64_t> traced;
+    uint64_t signature = 14695981039346656037ULL;
+    bool fullyOpaque = true;
+    for (size_t id : visibleGlyphIds) {
+      const auto& glyph = text[id];
+      signature = (signature ^ glyph.CharId) * 1099511628211ULL;
+      signature = (signature ^ glyph.Colors.TextColor) * 1099511628211ULL;
+      fullyOpaque &= glyph.Opacity * opacity >= 0.999f;
     }
-
-    const auto translateVertex = [](VertexBufferSprites vertex,
-                                    const glm::vec2 offset) {
-      vertex.Position += offset;
-      return vertex;
-    };
-
-    switch (outlineMode) {
-      case RendererOutlineMode::Full: {
-        // Add bottom-right outline
-        vertices.insert(vertices.begin() + vertexCount, vertices.begin(),
-                        vertices.begin() + vertexCount);
-
-        indices.resize(indexCount * 3);
-        std::transform(indices.begin(), indices.begin() + indexCount,
-                       indices.begin() + indexCount * 2,
-                       [maxIndex](uint16_t index) { return index + maxIndex; });
-        maxIndex += (uint16_t)vertexCount;
-
-        // Translate outlines
-        const auto tlOutlineStart = vertices.begin();
-        const auto brOutlineStart = tlOutlineStart + vertexCount;
-        const auto foregroundStart = brOutlineStart + vertexCount;
-        std::transform(tlOutlineStart, brOutlineStart, tlOutlineStart,
-                       [translateVertex](auto vertex) {
-                         return translateVertex(vertex, {-1.0f, -1.0f});
-                       });
-        std::transform(brOutlineStart, foregroundStart, brOutlineStart,
-                       [translateVertex](auto vertex) {
-                         return translateVertex(vertex, {1.0f, 1.0f});
-                       });
-
-        break;
+    signature =
+        (signature ^ static_cast<uint64_t>(outlineMode)) * 1099511628211ULL;
+    signature = (signature ^ fullyOpaque) * 1099511628211ULL;
+    if (traced.size() < 256 && traced.insert(signature).second) {
+      ImpLog(LogLevel::Warning, LogChannel::General,
+             "[fonttrace] count={} opaque={} drawAlpha={:.3f} outlineAlpha={:.3f} "
+             "outline={} split={} sheet={}/{} dims={:.0f}x{:.0f}/{:.0f}x{:.0f} "
+             "cell={:.1f}x{:.1f} offset=({:.1f},{:.1f})\n",
+             glyphCount, fullyOpaque, opacity, outlineOpacity, (int)outlineMode,
+             FirstPageGlyphs, Sheet.Texture, Sheet2.Texture, Sheet.DesignWidth,
+             Sheet.DesignHeight, Sheet2.DesignWidth, Sheet2.DesignHeight,
+             CellSize.x, CellSize.y, transformation[3].x, transformation[3].y);
+      for (size_t id : visibleGlyphIds) {
+        const auto& glyph = text[id];
+        const Sprite source = GetGlyph(glyph.CharId);
+        ImpLog(LogLevel::Warning, LogChannel::General,
+               "[fonttrace] glyph={} id={:04x} page={} opacity={:.3f} "
+               "fgAlpha={:.3f} text={:06x} edge={:06x} "
+               "src=({:.1f},{:.1f},{:.1f},{:.1f}) "
+               "dest=({:.1f},{:.1f},{:.1f},{:.1f})\n",
+               id, glyph.CharId, glyph.CharId >= FirstPageGlyphs ? 2 : 1,
+               glyph.Opacity,
+               ApplyOpacityCurve(glyph.Opacity * opacity, ForegroundOpacityCurve),
+               glyph.Colors.TextColor, glyph.Colors.OutlineColor,
+               source.Bounds.X, source.Bounds.Y, source.Bounds.Width,
+               source.Bounds.Height, glyph.DestRect.X, glyph.DestRect.Y,
+               glyph.DestRect.Width, glyph.DestRect.Height);
       }
-
-      case RendererOutlineMode::BottomRight: {
-        const auto brOutlineStart = vertices.begin();
-        const auto foregroundStart = vertices.begin() + vertexCount;
-        std::transform(brOutlineStart, foregroundStart, brOutlineStart,
-                       [translateVertex](auto vertex) {
-                         return translateVertex(vertex, {1.0f, 1.0f});
-                       });
-
-        break;
-      }
-
-      default:
-        ImpLogSlow(LogLevel::Warning, LogChannel::Render,
-                   "Unexpected outline mode!");
-        break;
     }
   }
 
   const ShaderProgramType shader = maskedSheet == nullptr
                                        ? ShaderProgramType::Sprite
-                                       : ShaderProgramType::MaskedSpriteNoAlpha;
-  Renderer->DrawPrimitives(Sheet, maskedSheet, shader, vertices, indices,
-                           transformation);
+                                        : ShaderProgramType::MaskedSpriteNoAlpha;
+  std::vector<VertexBufferSprites> vertices;
+  std::vector<uint16_t> indices;
+
+  // Bind the sheet used to compute each glyph's UVs. Keep contiguous runs in
+  // text order, and finish each outline pass before drawing any foreground.
+  const auto drawPass = [&](bool outline, glm::vec2 offset) {
+    size_t first = 0;
+    while (first < glyphCount) {
+      const SpriteSheet& sheet =
+          FirstPageGlyphs != 0 &&
+                  text[visibleGlyphIds[first]].CharId >= FirstPageGlyphs
+              ? Sheet2
+              : Sheet;
+      size_t end = first + 1;
+      while (end < glyphCount && end - first < 16384) {
+        const bool secondPage = FirstPageGlyphs != 0 &&
+                                text[visibleGlyphIds[end]].CharId >=
+                                    FirstPageGlyphs;
+        if ((secondPage ? &Sheet2 : &Sheet) != &sheet) break;
+        ++end;
+      }
+
+      const size_t count = end - first;
+      vertices.resize(count * 4);
+      FillGlyphIndices(indices, static_cast<uint16_t>(count));
+      for (size_t i = 0; i < count; ++i) {
+        const ProcessedTextGlyph& glyph = text[visibleGlyphIds[first + i]];
+        const CornersQuad dest = glyph.DestRect + offset;
+        const CornersQuad destUV = GetGlyph(glyph.CharId).NormalizedBounds();
+        // The mask follows the original glyph, including for shifted outlines.
+        const CornersQuad maskUV = CornersQuad(glyph.DestRect).Scale(
+            {1.0f / Profile::Game::DesignWidth, 1.0f / Profile::Game::DesignHeight},
+            {0.0f, 0.0f});
+        glm::vec4 color = RgbIntToFloat(outline ? glyph.Colors.OutlineColor
+                                             : glyph.Colors.TextColor);
+        color.a = ApplyOpacityCurve(
+            glyph.Opacity * (outline ? outlineOpacity : opacity),
+            outline ? OutlineOpacityCurve : ForegroundOpacityCurve);
+        InsertQuad(std::span<VertexBufferSprites, 4>(vertices.begin() + i * 4, 4),
+                   dest, destUV, color, maskUV);
+      }
+      Renderer->DrawPrimitives(sheet, maskedSheet, shader, vertices, indices,
+                               transformation);
+      first = end;
+    }
+  };
+
+  if (outlineMode == RendererOutlineMode::Full) {
+    drawPass(true, {-1.0f, -1.0f});
+  }
+  if (outlineMode != RendererOutlineMode::None) {
+    drawPass(true, {1.0f, 1.0f});
+  }
+  drawPass(false, {0.0f, 0.0f});
 }
 
 ProcessedTextGlyph SeparateOutlineSheetFont::PlaceGlyph(

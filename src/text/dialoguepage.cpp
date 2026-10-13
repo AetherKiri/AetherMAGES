@@ -85,6 +85,7 @@ void DialoguePage::AddString(Vm::Sc3VmThread* ctx, std::optional<int> voiceId,
   AudioId = voiceId;
 
   CharacterId = charId;
+  if (acted) PortraitSpeakerMask = charId;
   ScrWork[Id + SW_ANIME0CHANO] = charId;
 
   AnimationId = std::min(acted ? animId : charId, 31);
@@ -166,8 +167,10 @@ void DialoguePage::Update(float dt) {
   }
 
   const State visibilityState = GetState();
-  const bool shouldHide =
-      visibilityState == State::Hiding || visibilityState == State::Hidden;
+  const bool shouldHide = visibilityState == State::Hidden ||
+      (Profile::Vm::GameInstructionSet != Vm::InstructionSet::MO8 &&
+       visibilityState == State::Hiding);
+  if (visibilityState == State::Hidden) PortraitSpeakerMask = 0;
   if (RenderName && !shouldHide) {
     DialogueBoxInst->ShowName();
   } else {
@@ -244,7 +247,9 @@ void DialoguePage::Render(const float alpha,
   }
 
   if ((winType & 1 << 5) == 0) {
-    if (RenderName) {
+    if (RenderName &&
+        (Profile::Vm::GameInstructionSet != Vm::InstructionSet::MO8 ||
+         GetState() != State::Hidden)) {
       DialogueFont->DrawProcessedText(Name, opacityTint.a, opacityTint.a,
                                       outlineMode, pos);
     }

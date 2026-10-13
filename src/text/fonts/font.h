@@ -132,8 +132,12 @@ class SingleSheetFont : public Font {
         Sheet2(sheet2),
         FirstPageGlyphs(firstPageGlyphs),
         GridSize(gridSize),
-        CellSize(sheet.GetDimensions() / static_cast<glm::vec2>(gridSize)),
-        CellSize2(sheet2.GetDimensions() / static_cast<glm::vec2>(gridSize)),
+        CellSize(firstPageGlyphs != 0
+                     ? glm::vec2(bitmapEmWidth, bitmapEmHeight)
+                     : sheet.GetDimensions() / static_cast<glm::vec2>(gridSize)),
+        CellSize2(firstPageGlyphs != 0
+                      ? glm::vec2(bitmapEmWidth, bitmapEmHeight)
+                      : sheet2.GetDimensions() / static_cast<glm::vec2>(gridSize)),
         AdvanceWidths(std::move(advanceWidths)) {}
 
  private:
@@ -145,7 +149,7 @@ class SingleSheetFont : public Font {
     glm::vec2 cellSize;
     SpriteSheet sheet;
     if (FirstPageGlyphs != 0 && id >= FirstPageGlyphs) {
-      // Two-page font (e.g. MO8: font.dds + font2.dds): the second page
+      // Two-page font (e.g. MO8: font1_1.dds + font1_2.dds): the second page
       // continues the glyph id space of the first.
       sheet = Sheet2;
       cellSize = CellSize2;

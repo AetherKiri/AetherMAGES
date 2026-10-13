@@ -3,8 +3,12 @@ root.Fonts = {
         Type = FontType.SingleSheet,
         Sheet = "Font",
         Sheet2 = "Font2",
-        FirstPageGlyphs = 64 * 116,
-        GridSize = { X = 64, Y = 116 },
+        -- CHS glyphs use two 48px atlases. Only 4080 of the 4096 rows
+        -- contain complete cells; the final 16px are texture padding.
+        FirstPageGlyphs = 64 * 85,
+        GridSize = { X = 64, Y = 85 },
+        BitmapEmWidth = 48,
+        BitmapEmHeight = 48,
         AdvanceWidthsTable = {},
         AdvanceWidthsEmWidth = 48,
     },
@@ -21,6 +25,17 @@ root.Fonts = {
         },
         OutlineOffset = { X = -4, Y = -4 },
     }
+};
+
+root.SpriteSheets["Font"] = {
+    Path = { Mount = "system", Id = 29 }, -- font1_1.dds
+    DesignWidth = 3072,
+    DesignHeight = 4096
+};
+root.SpriteSheets["Font2"] = {
+    Path = { Mount = "system", Id = 30 }, -- font1_2.dds
+    DesignWidth = 3072,
+    DesignHeight = 4096
 };
 
 root.SpriteSheets["FontLBForeground"] = {
@@ -63,7 +78,7 @@ local westernAdvanceWidths = {
     0x20
 };
 
-for i = 1, (64 * 116 * 2) do
+for i = 1, (64 * 85 * 2) do
     if i <= #westernAdvanceWidths then
         root.Fonts["Default"].AdvanceWidthsTable[i] = westernAdvanceWidths[i] * 1.5;
     else

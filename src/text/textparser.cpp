@@ -1,5 +1,6 @@
 #include "textparser.h"
 
+#include <cstdlib>
 #include <numeric>
 #include <magic_enum/magic_enum_containers.hpp>
 
@@ -7,6 +8,7 @@
 #include "../profile/games/chlcc/dialoguebox.h"
 #include "../profile/vm.h"
 #include "../profile/scriptvars.h"
+#include "../log.h"
 
 #include "../data/tipssystem.h"
 #include "../hud/tipsnotification.h"
@@ -395,6 +397,85 @@ void TextParser::FinishName() {
   Vm::Sc3Stream nameStream(NameCode.data());
   const float nameWidth = TextGetPlainLineWidth(nameStream, *DialogueFont,
                                                 ModeInfo.NameGlyphSize.y);
+
+  if (Profile::Vm::GameInstructionSet == Vm::InstructionSet::MO8) {
+    // Game.exe 0x431430 measures names using NameGlyphWidth, compresses
+    // overflowing names horizontally, and uses flags bit 3 for the band.
+    const float glyphScaleX =
+        ModeInfo.NameGlyphSize.y > 0.0f
+            ? ModeInfo.NameGlyphSize.x / ModeInfo.NameGlyphSize.y
+            : 1.0f;
+    const float naturalWidth = nameWidth * glyphScaleX;
+    const bool compressed = naturalWidth > ModeInfo.MaxNameWidth;
+    float bandWidth = ModeInfo.MaxNameWidth;
+    if (!compressed && ModeInfo.UseNameLengthL) {
+      bandWidth = std::max(naturalWidth, ModeInfo.NameLengthL);
+    }
+    glm::vec2 pos = ModeInfo.NamePos;
+    switch (ModeInfo.NameDispMode) {
+      case RelativeToWindow:
+        pos += ModeInfo.WindowPos;
+        if (!compressed) {
+          if (ModeInfo.NameAlignment == Center) {
+            pos.x -= naturalWidth / 2.0f;
+          }
+          if (ModeInfo.NameAlignment == Right) {
+            pos.x += bandWidth - naturalWidth;
+          }
+        }
+        break;
+      case FixedPos:
+        pos.x += bandWidth / 2.0f;
+        if (!compressed) {
+          switch (ModeInfo.NameAlignment) {
+            case Left:
+              pos.x = ModeInfo.NamePos.x;
+              break;
+            case Center:
+              pos.x -= naturalWidth / 2.0f;
+              break;
+            case Right:
+              pos.x += naturalWidth;
+              break;
+          }
+        }
+        break;
+      case InText:
+        pos = ModeInfo.WindowPos +
+              glm::vec2(CurrentX, CurrentLineTop + CurrentLineTopMargin);
+        break;
+      case Invisible:
+        assert(false);
+        break;
+    }
+
+    nameStream = Vm::Sc3Stream(NameCode.data());
+    Name = TextLayoutPlainLine(nameStream, NameCode.size() - 1, *DialogueFont,
+                               ModeInfo.NameGlyphSize.y, ColorTable[0], 1.0f, pos,
+                               TextAlignment::Left);
+    const float scaleX =
+        glyphScaleX *
+        (compressed ? ModeInfo.MaxNameWidth / naturalWidth : 1.0f);
+    for (ProcessedTextGlyph& glyph : Name) {
+      glyph.Position.x = pos.x + (glyph.Position.x - pos.x) * scaleX;
+      glyph.DestRect.X = pos.x + (glyph.DestRect.X - pos.x) * scaleX;
+      glyph.DestRect.Width *= scaleX;
+    }
+    if (std::getenv("IMPACTO_TEXT_TRACE") != nullptr) {
+      ImpLog(LogLevel::Warning, LogChannel::General,
+             "[texttrace] name: mode={} align={} useBand={} minBand={:.1f} "
+             "maxWidth={:.1f} natural={:.1f} band={:.1f} compressed={} "
+             "scaleX={:.3f} pos=({:.1f},{:.1f}) glyphs={}\n",
+             (int)ModeInfo.NameDispMode, (int)ModeInfo.NameAlignment,
+             ModeInfo.UseNameLengthL, ModeInfo.NameLengthL, ModeInfo.MaxNameWidth,
+             naturalWidth, bandWidth, compressed, scaleX, pos.x, pos.y, Name.size());
+    }
+    assert(NameCode.size() - 1 == Name.size());
+    if (ModeInfo.NameDispMode == InText) {
+      CurrentLineTop += ModeInfo.NameGlyphSize.y + ModeInfo.LineSpacing;
+    }
+    return;
+  }
 
   glm::vec2 pos{};
   switch (ModeInfo.NameDispMode) {

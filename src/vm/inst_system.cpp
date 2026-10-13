@@ -1025,6 +1025,7 @@ VmInstruction(InstMSinit) {
   if (initType == 0 || initType == 1) {
     for (int i = 0; i < std::ssize(DialoguePages); i++) {
       DialoguePages[i].Clear();
+      DialoguePages[i].PortraitSpeakerMask = 0;
       DialoguePages[i].FadeAnimation.Progress = 0;
       SetFlag(i + SF_MESWINDOW0OPENFL, 0);
     }

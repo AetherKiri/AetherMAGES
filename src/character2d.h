@@ -107,9 +107,11 @@ class Character2D : public Loadable<Character2D, bool, uint32_t> {
 class CharacterPortrait2D : public Character2D {
  public:
   void UpdateState(int chaId) override;
+  void UpdateFace(int face);
 };
 
 inline std::array<Character2D, MaxCharacters2D> Characters2D;
 inline std::array<CharacterPortrait2D, 2> SpeakerPortraits;
+inline std::array<CharacterPortrait2D, MaxCharacters2D> CharacterPortraits2D;
 
 }  // namespace Impacto

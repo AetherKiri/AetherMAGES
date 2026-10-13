@@ -90,9 +90,9 @@ struct TextModeInfo {
   };
   NameAlignmentType NameAlignment = NameAlignmentType::Center;
 
-  // Idk what these are either
+  // Bit 3 of NamePosFlags enables a minimum name band width.
   bool UseNameLengthL = false;
-  uint16_t NameLengthL = 0;
+  float NameLengthL = 0.0f;
 };
 inline std::array<TextModeInfo, 10> TextModesInfo;
 

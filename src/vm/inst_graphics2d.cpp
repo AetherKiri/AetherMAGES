@@ -190,6 +190,16 @@ VmInstruction(InstCHAload) {
 
   const int chaBufId = ScrWork[SW_CHA1SURF + actualBufId];
 
+  // MO8 CHAload also owns a face.mpk mesh in the corresponding physical
+  // buffer (Game.exe 0x44c1f8..0x44c3aa). Keep it paired across CHAswap.
+  const bool loadPortrait = GameInstructionSet == InstructionSet::MO8;
+  if (loadPortrait &&
+      CharacterPortraits2D[chaBufId].Status == LoadStatus::Loading) {
+    ResetInstruction;
+    BlockThread;
+    return;
+  }
+
   switch (Characters2D[chaBufId].Status) {
     case LoadStatus::Unloaded:
     case LoadStatus::Loaded: {
@@ -198,10 +208,36 @@ VmInstruction(InstCHAload) {
       }
 
       if (ScrWork[SW_CHA1NO + chaStructOffset] != (characterId & 0xFFFF)) {
+        if (loadPortrait) {
+          CharacterPortraits2D[chaBufId].Unload();
+          CharacterPortraits2D[chaBufId].Show = false;
+        }
         ScrWork[SW_CHA1NO + chaStructOffset] = characterId & 0xFFFF;
 
         Characters2D[chaBufId].LoadAsync(characterId);
 
+        ResetInstruction;
+        BlockThread;
+        return;
+      }
+
+      // The original loads the portrait only after the standing mesh is
+      // ready, using the same PNG id and its following MVL entry.
+      if (loadPortrait &&
+          Characters2D[chaBufId].Status == LoadStatus::Loaded &&
+          CharacterPortraits2D[chaBufId].Status == LoadStatus::Unloaded) {
+        auto& portrait = CharacterPortraits2D[chaBufId];
+        portrait.MountPoint = "face";
+        const uint32_t portraitId =
+            (static_cast<uint32_t>(ScrWork[SW_CHA1FACE + chaStructOffset])
+             << 16) |
+            (characterId & 0xFFFF);
+        if (getenv("IMPACTO_PORTRAIT_TRACE")) {
+          ImpLog(LogLevel::Warning, LogChannel::General,
+                 "[portraittrace] CHAload slot={} surf={} id=0x{:08x}\n",
+                 actualBufId, chaBufId, portraitId);
+        }
+        portrait.LoadAsync(portraitId);
         ResetInstruction;
         BlockThread;
       }
@@ -283,6 +319,72 @@ VmInstruction(InstCHAcopy) {
   srcBufferId = GetBufferId(srcBufferId);
   dstBufferId = GetBufferId(dstBufferId);
 
+  if (GameInstructionSet == InstructionSet::MO8) {
+    const size_t srcOffset = ScrWorkChaStructSize * srcBufferId;
+    const size_t dstOffset = ScrWorkChaStructSize * dstBufferId;
+    const int srcSurfId = ScrWork[SW_CHA1SURF + srcBufferId];
+    const int dstSurfId = ScrWork[SW_CHA1SURF + dstBufferId];
+    auto& character = Characters2D[dstSurfId];
+    auto& portrait = CharacterPortraits2D[dstSurfId];
+
+    // Game.exe 0x44c67e/0x44c6ae copies both meshes. Loadable cannot
+    // cancel a pending load, so wait before replacing either resource.
+    if (Characters2D[srcSurfId].Status == LoadStatus::Loading ||
+        CharacterPortraits2D[srcSurfId].Status == LoadStatus::Loading ||
+        character.Status == LoadStatus::Loading ||
+        portrait.Status == LoadStatus::Loading) {
+      ResetInstruction;
+      BlockThread;
+      return;
+    }
+
+    const int characterNo = ScrWork[SW_CHA1NO + srcOffset] & 0xFFFF;
+    if (characterNo == 0xFFFF) {
+      character.Unload();
+      portrait.Unload();
+      portrait.Show = false;
+      ScrWork[SW_CHA1NO + dstOffset] = 0xFFFF;
+      return;
+    }
+
+    if (ScrWork[SW_CHA1NO + dstOffset] != characterNo ||
+        character.Status == LoadStatus::Unloaded) {
+      // Invalidate the old portrait before updating NO. On re-entry the
+      // unloaded portrait marks the second resource still needing a load.
+      portrait.Unload();
+      portrait.Show = false;
+      ScrWork[SW_CHA1NO + dstOffset] = characterNo;
+      const uint32_t characterId =
+          (static_cast<uint32_t>(ScrWork[SW_CHA1FACE + srcOffset]) << 16) |
+          characterNo;
+      character.LoadAsync(characterId);
+      ResetInstruction;
+      BlockThread;
+      return;
+    }
+
+    // Copy changes NO only; destination expression/filter/position remain
+    // its own script state. Use the paired physical buffer, as in CHAload.
+    if (portrait.Status == LoadStatus::Unloaded) {
+      portrait.MountPoint = "face";
+      const uint32_t portraitId =
+          (static_cast<uint32_t>(ScrWork[SW_CHA1FACE + dstOffset]) << 16) |
+          characterNo;
+      if (getenv("IMPACTO_PORTRAIT_TRACE")) {
+        ImpLog(LogLevel::Warning, LogChannel::General,
+               "[portraittrace] CHAcopy src={} dst={} surf={} id=0x{:08x}\n",
+               srcBufferId, dstBufferId, dstSurfId, portraitId);
+      }
+      portrait.LoadAsync(portraitId);
+      ResetInstruction;
+      BlockThread;
+      return;
+    }
+
+    portrait.UpdateFace(ScrWork[SW_CHA1FACE + dstOffset]);
+    return;
+  }
+
   int chaId = (ScrWork[SW_CHA1FACE + ScrWorkBgStructSize * srcBufferId] << 16) +
               ScrWork[SW_CHA1NO + ScrWorkBgStructSize * srcBufferId];
   int dstSurfId = ScrWork[SW_CHA1SURF + dstBufferId];
@@ -361,6 +463,18 @@ VmInstruction(InstCHArelease) {
   PopExpression(bufferId);
   bufferId = GetBufferId(bufferId);
   int surfId = ScrWork[SW_CHA1SURF + bufferId];
+  if (GameInstructionSet == InstructionSet::MO8) {
+    // Loadable cannot cancel an in-flight load. Drain it before releasing
+    // both resources so its completion cannot resurrect a stale portrait.
+    if (Characters2D[surfId].Status == LoadStatus::Loading ||
+        CharacterPortraits2D[surfId].Status == LoadStatus::Loading) {
+      ResetInstruction;
+      BlockThread;
+      return;
+    }
+    CharacterPortraits2D[surfId].Unload();
+    CharacterPortraits2D[surfId].Show = false;
+  }
   ScrWork[SW_CHA1NO + ScrWorkChaStructSize * bufferId] = 0xFFFF;
   if (Characters2D[surfId].Status == LoadStatus::Loaded) {
     Characters2D[surfId].Unload();
@@ -519,6 +633,49 @@ VmInstruction(InstBGeffectMO7) {
              "STUB instruction BGeffectMO7(arg1: {:d})\n", type);
 }
 
+// This path supports EX portraits only (MO8 masks 0x100/0x200). Ordinary
+// MO8 FACE slots need their own initialized/swapped surface mapping and a
+// matching dialogue fallback before they can use CharacterPortraits2D.
+static int GetSpeakerPortraitBuffer(int mask, int& slot,
+                                    const char* instruction) {
+  // Validate before log2: zero, negative and multi-bit masks are not slots.
+  if (mask <= 0 || (mask & (mask - 1)) != 0) {
+    ImpLog(LogLevel::Error, LogChannel::VM,
+           "{}: invalid FACE slot mask {}\n", instruction, mask);
+    return -1;
+  }
+
+  slot = GetBufferId(mask) - SpeakerPortraitsScrWorkOffset;
+  if (slot < 0 || slot >= std::ssize(SpeakerPortraits)) {
+    ImpLog(LogLevel::Error, LogChannel::VM,
+           "{}: unsupported FACE slot mask {}; only EX portraits are "
+           "supported\n",
+           instruction, mask);
+    return -1;
+  }
+
+  const int surfaceIndex = SW_FACE1SURF + slot;
+  const int noIndex = SW_FACEEX1NO + 5 * slot;
+  const int faceIndex = SW_FACEEX1FACE + 5 * slot;
+  if (surfaceIndex < 0 || surfaceIndex >= std::ssize(ScrWork) ||
+      noIndex < 0 || noIndex >= std::ssize(ScrWork) ||
+      faceIndex < 0 || faceIndex >= std::ssize(ScrWork)) {
+    ImpLog(LogLevel::Error, LogChannel::VM,
+           "{}: invalid FACE script state indices for EX slot {}\n",
+           instruction, slot);
+    return -1;
+  }
+
+  const int buffer = ScrWork[surfaceIndex];
+  if (buffer < 0 || buffer >= std::ssize(SpeakerPortraits)) {
+    ImpLog(LogLevel::Error, LogChannel::VM,
+           "{}: invalid FACE surface {} for EX slot {}\n", instruction,
+           buffer, slot);
+    return -1;
+  }
+  return buffer;
+}
+
 VmInstruction(InstFACEload) {
   StartInstruction;
   PopUint8(type);
@@ -526,9 +683,14 @@ VmInstruction(InstFACEload) {
     case 0: {
       PopExpression(bufferId);
       PopExpression(faceId);
-      int actualBufId =
-          GetBufferId(bufferId) - Profile::Vm::SpeakerPortraitsScrWorkOffset;
-      int chaBufId = ScrWork[SW_FACE1SURF + actualBufId];
+      int actualBufId;
+      const int chaBufId =
+          GetSpeakerPortraitBuffer(bufferId, actualBufId, "FACEload");
+      if (chaBufId < 0) return;
+      if (Profile::Vm::GameInstructionSet == InstructionSet::MO8 &&
+          (faceId >> 16) != 0) {
+        ScrWork[SW_FACEEX1FACE + 5 * actualBufId] = faceId >> 16;
+      }
       if (((faceId & 0xFFFF0000) >> 16) == 0) {
         faceId = (ScrWork[SW_FACEEX1FACE + 5 * actualBufId] << 16) | faceId;
       }
@@ -539,6 +701,12 @@ VmInstruction(InstFACEload) {
         ScrWork[SW_FACEEX1NO + 5 * actualBufId] = faceId & 0xFFFF;
         ScrWork[SW_FACEEX1FACE + 5 * actualBufId] = faceId >> 16;
         SpeakerPortraits[chaBufId].MountPoint = "face";
+        if (getenv("IMPACTO_PORTRAIT_TRACE") &&
+            Profile::Vm::GameInstructionSet == InstructionSet::MO8) {
+          ImpLog(LogLevel::Warning, LogChannel::General,
+                 "[portraittrace] load slot={} surf={} id=0x{:08x}\n",
+                 actualBufId, chaBufId, faceId);
+        }
         SpeakerPortraits[chaBufId].LoadAsync(faceId);
         ResetInstruction;
         BlockThread;
@@ -550,9 +718,14 @@ VmInstruction(InstFACEload) {
 VmInstruction(InstFACErelease) {
   StartInstruction;
   PopExpression(bufferId);
-  bufferId = GetBufferId(bufferId) - Profile::Vm::SpeakerPortraitsScrWorkOffset;
-  int surfId = ScrWork[SW_FACE1SURF + bufferId];
+  int slot;
+  const int surfId = GetSpeakerPortraitBuffer(bufferId, slot, "FACErelease");
+  if (surfId < 0) return;
+  bufferId = slot;
   ScrWork[SW_FACEEX1NO + 5 * bufferId] = 0xFFFF;
+  if (Profile::Vm::GameInstructionSet == InstructionSet::MO8) {
+    ScrWork[SW_FACEEX1FACE + 5 * bufferId] = 0;
+  }
   if (SpeakerPortraits[surfId].Status == LoadStatus::Loaded) {
     SpeakerPortraits[surfId].Unload();
   }

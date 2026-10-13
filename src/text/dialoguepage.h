@@ -28,6 +28,7 @@ struct DialoguePage : public TextPage {
   int CurrentVoiceCharacterId = 0;
   int AnimationId = 0;
   int CharacterId = 0;
+  int PortraitSpeakerMask = 0;
   std::optional<int> AudioId;
   bool SyncEnabled = false;
 

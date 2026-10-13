@@ -21,7 +21,7 @@ root.Dialogue = {
     NVLBoxMaxOpacity = 0.55,
 
     NametagCurrentType = NametagType.Sprite,
-    NametagPosition = { X = 0, Y = 950 },
+    NametagPosition = { X = 0, Y = 940 },
     NametagSprite = "NametagSprite",
 
     WaitIconSpriteAnimation = "WaitIconSpriteAnimationDef",
@@ -154,5 +154,5 @@ root.Sprites["MenuButtonActive"] = {
 
 root.Sprites["NametagSprite"] = {
     Sheet = "MesBox",
-    Bounds = { X = 0, Y = 340, Width = 420, Height = 90 }
+    Bounds = { X = 0, Y = 330, Width = 610, Height = 104 }
 };

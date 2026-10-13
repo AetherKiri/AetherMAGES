@@ -103,7 +103,66 @@ void PlainDialogueBox::Render(const DialoguePageMode mode,
     Renderer->DrawSprite(ADVBoxSprite, ADVBoxPos, tint);
     RenderControlButtons(tint);
 
-    if (!nameInfo.Name.empty()) {
+    if (HasSpeakerPortraits &&
+        Profile::Vm::GameInstructionSet == Vm::InstructionSet::MO8) {
+      // MO8 chooses one explicit portrait, or the first displayed speaker.
+      if (!GetFlag(SF_FACEEX1DISP - 1)) {
+        int slot = GetFlag(SF_FACEEX1DISP) ? 0
+                   : GetFlag(SF_FACEEX1DISP + 1) ? 1 : -1;
+        int source = slot >= 0 ? 8 + slot : -1;
+        CharacterPortrait2D* portrait = nullptr;
+        if (slot >= 0) {
+          const int buffer = ScrWork[SW_FACE1SURF + slot];
+          if (buffer >= 0 && buffer < std::ssize(SpeakerPortraits)) {
+            portrait = &SpeakerPortraits[buffer];
+            portrait->UpdateState(slot);
+          }
+        } else {
+          const int mask = ParentPage.get().PortraitSpeakerMask;
+          for (int i = 0; i < 8; ++i) {
+            if (!(mask & (1 << i)) || !GetFlag(SF_CHA1DISP + i)) continue;
+            const int buffer = ScrWork[SW_CHA1SURF + i];
+            if (buffer >= 0 && buffer < std::ssize(CharacterPortraits2D)) {
+              source = i;
+              portrait = &CharacterPortraits2D[buffer];
+              portrait->UpdateFace(
+                  ScrWork[SW_CHA1FACE + Profile::Vm::ScrWorkChaStructSize * i]);
+              portrait->Position =
+                  glm::vec2(ScrWork[SW_FACEPOSX], ScrWork[SW_FACEPOSY]) *
+                  glm::vec2(Profile::Game::DesignWidth / 1280.0f,
+                            Profile::Game::DesignHeight / 720.0f);
+              portrait->Tint = ScrWorkGetColor(
+                  SW_CHA1FILTER + Profile::Vm::ScrWorkChaStructSize * i);
+              portrait->Scale = glm::vec2(1.0f);
+              portrait->Rotation = glm::quat();
+            }
+            break;
+          }
+        }
+        if (portrait) {
+          portrait->Show = true;
+          portrait->Tint.a = tint.a;
+          portrait->Position +=
+              glm::vec2(SpeakerPortraitBaseOffsetX, SpeakerPortraitBaseOffsetY);
+          portrait->Render(-1);
+        }
+        if (getenv("IMPACTO_PORTRAIT_TRACE")) {
+          static std::array<std::array<int, 4>, 3> last{};
+          const int page = ParentPage.get().Id;
+          const std::array<int, 4> state = {
+              source, portrait ? static_cast<int>(portrait->Status) : -1,
+              portrait ? portrait->Face : -1,
+              ParentPage.get().PortraitSpeakerMask};
+          if (last[page] != state) {
+            last[page] = state;
+            ImpLog(LogLevel::Warning, LogChannel::General,
+                   "[portraittrace] draw page={} source={} status={} face={} "
+                   "mask=0x{:x} alpha={:.3f}\n",
+                   page, source, state[1], state[2] >> 16, state[3], tint.a);
+          }
+        }
+      }
+    } else if (!nameInfo.Name.empty()) {
       if (HasSpeakerPortraits) {
         // Draw Face
         for (int i = 0; i < std::ssize(SpeakerPortraits); i++) {
