@@ -90,10 +90,12 @@ class SingleSheetFont : public Font {
   SingleSheetFont(float bitmapEmWidth, float bitmapEmHeight,
                   OpacityCurve foregroundOpacityCurve,
                   OpacityCurve outlineOpacityCurve, SpriteSheet sheet,
-                  glm::ivec2 gridSize, std::vector<float>&& advanceWidths)
+                  glm::ivec2 gridSize, std::vector<float>&& advanceWidths,
+                  SpriteSheet sheet2 = {}, uint32_t firstPageGlyphs = 0)
       : SingleSheetFont(FontType::SingleSheet, bitmapEmWidth, bitmapEmHeight,
                         foregroundOpacityCurve, outlineOpacityCurve, sheet,
-                        gridSize, std::move(advanceWidths)) {}
+                        gridSize, std::move(advanceWidths), sheet2,
+                        firstPageGlyphs) {}
 
   virtual void DrawProcessedText(std::span<const ProcessedTextGlyph> text,
                                  float opacity, float outlineOpacity,
@@ -107,7 +109,8 @@ class SingleSheetFont : public Font {
                                         float opacity) const override;
 
   virtual float GetAdvanceWidth(uint32_t glyphId) const override {
-    return AdvanceWidths[glyphId];
+    return AdvanceWidths[std::min<size_t>(
+            glyphId, AdvanceWidths.size() - 1)];
   }
 
  protected:
@@ -120,23 +123,47 @@ class SingleSheetFont : public Font {
   SingleSheetFont(FontType fontType, float bitmapEmWidth, float bitmapEmHeight,
                   OpacityCurve foregroundOpacityCurve,
                   OpacityCurve outlineOpacityCurve, SpriteSheet sheet,
-                  glm::ivec2 gridSize, std::vector<float>&& advanceWidths)
+                  glm::ivec2 gridSize, std::vector<float>&& advanceWidths,
+                  SpriteSheet sheet2 = {},
+                  uint32_t firstPageGlyphs = 0)
       : Font(fontType, bitmapEmWidth, bitmapEmHeight, foregroundOpacityCurve,
              outlineOpacityCurve),
         Sheet(sheet),
+        Sheet2(sheet2),
+        FirstPageGlyphs(firstPageGlyphs),
         GridSize(gridSize),
         CellSize(sheet.GetDimensions() / static_cast<glm::vec2>(gridSize)),
+        CellSize2(sheet2.GetDimensions() / static_cast<glm::vec2>(gridSize)),
         AdvanceWidths(std::move(advanceWidths)) {}
 
  private:
   Sprite GetGlyph(uint32_t id) const {
-    const uint8_t row = static_cast<uint8_t>(id / GridSize.x);
-    const uint8_t col = static_cast<uint8_t>(id % GridSize.x);
-    const float width = AdvanceWidths[id];
+    const float width =
+        AdvanceWidths[std::min<size_t>(id, AdvanceWidths.size() - 1)];
+    uint32_t row;
+    uint32_t col;
+    glm::vec2 cellSize;
+    SpriteSheet sheet;
+    if (FirstPageGlyphs != 0 && id >= FirstPageGlyphs) {
+      // Two-page font (e.g. MO8: font.dds + font2.dds): the second page
+      // continues the glyph id space of the first.
+      sheet = Sheet2;
+      cellSize = CellSize2;
+      id = std::min(id - FirstPageGlyphs, FirstPageGlyphs - 1);
+    } else {
+      sheet = Sheet;
+      cellSize = CellSize;
+    }
+    row = id / GridSize.x;
+    col = id % GridSize.x;
 
-    return Sprite(Sheet, col * CellSize.x + 1.0f, row * CellSize.y + 1.0f,
+    return Sprite(sheet, col * cellSize.x + 1.0f, row * cellSize.y + 1.0f,
                   width - 2.0f, BitmapEmHeight - 2.0f);
   }
+
+  SpriteSheet Sheet2;
+  uint32_t FirstPageGlyphs;
+  glm::vec2 CellSize2;
 };
 
 class SeparateOutlineSheetFont : public Font {

@@ -61,7 +61,10 @@ ProcessedTextGlyph SingleSheetFont::PlaceGlyph(const uint32_t glyphId,
       .Opacity = opacity,
       .DestRect =
           RectF(position.x, position.y,
-                (fontSize / BitmapEmWidth) * AdvanceWidths[glyphId], fontSize),
+                (fontSize / BitmapEmWidth) *
+                    AdvanceWidths[std::min<size_t>(
+                        glyphId, AdvanceWidths.size() - 1)],
+                fontSize),
       .Position = position,
   };
 }
@@ -189,7 +192,10 @@ ProcessedTextGlyph SeparateOutlineSheetFont::PlaceGlyph(
       .Opacity = opacity,
       .DestRect =
           RectF(position.x, position.y,
-                (fontSize / BitmapEmWidth) * AdvanceWidths[glyphId], fontSize),
+                (fontSize / BitmapEmWidth) *
+                    AdvanceWidths[std::min<size_t>(
+                        glyphId, AdvanceWidths.size() - 1)],
+                fontSize),
       .Position = position,
   };
 }

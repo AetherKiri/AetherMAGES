@@ -87,10 +87,18 @@ void LoadFonts() {
         }
 
         if (fontType == SingleSheet) {
+          // Optional second font page (MO8: font.dds + font2.dds share the
+          // glyph id space; ids >= FirstPageGlyphs live on Sheet2).
+          const SpriteSheet sheet2 =
+              TryGetMember<SpriteSheet>("Sheet2").value_or(SpriteSheet{});
+          const uint32_t firstPageGlyphs =
+              TryGetMember<uint32_t>("FirstPageGlyphs").value_or(0);
+
           Fonts[name] = new SingleSheetFont(
               *bitmapEmWidth, *bitmapEmHeight, foregroundOpacityCurve,
               outlineOpacityCurve, sheet, gridSize,
-              EnsureGetAdvanceWidths(name, *bitmapEmWidth));
+              EnsureGetAdvanceWidths(name, *bitmapEmWidth), sheet2,
+              firstPageGlyphs);
         } else {
           assert(fontType == EdgeDetectedSingleSheet);
 

@@ -2,6 +2,8 @@ root.Fonts = {
     ["Default"] = {
         Type = FontType.SingleSheet,
         Sheet = "Font",
+        Sheet2 = "Font2",
+        FirstPageGlyphs = 64 * 116,
         GridSize = { X = 64, Y = 116 },
         AdvanceWidthsTable = {},
         AdvanceWidthsEmWidth = 48,
@@ -61,7 +63,7 @@ local westernAdvanceWidths = {
     0x20
 };
 
-for i = 1, (64 * 116) do
+for i = 1, (64 * 116 * 2) do
     if i <= #westernAdvanceWidths then
         root.Fonts["Default"].AdvanceWidthsTable[i] = westernAdvanceWidths[i] * 1.5;
     else

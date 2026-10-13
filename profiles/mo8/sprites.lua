@@ -14,6 +14,11 @@ root.SpriteSheets = {
         DesignWidth = 3072,
         DesignHeight = 5568
     },
+    ["Font2"] = {
+        Path = { Mount = "system", Id = 10 },
+        DesignWidth = 3072,
+        DesignHeight = 5568
+    },
     ["Menu"] = {
         Path = { Mount = "system", Id = 8 },
         DesignWidth = 2048,
