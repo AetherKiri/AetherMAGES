@@ -463,6 +463,36 @@ static void RenderMain() {
 
     if ((+Profile::Game::GameFeatures & +GameFeature::Renderer2D) &&
         !(+Profile::Game::GameFeatures & +GameFeature::Scene3D)) {
+      // Debug aid: IMPACTO_CHARA_TRACE=1 dumps the character-sprite pipeline
+      // state once per frame so sprite visibility is verifiable from the log.
+      // Only logs on state change to keep the log readable.
+      static const bool charaTrace = getenv("IMPACTO_CHARA_TRACE") != nullptr;
+      if (charaTrace && layer == 0) {
+        static std::array<uint64_t, MaxCharacters2D> lastSig{};
+        for (int chaId = 0; chaId < std::ssize(Characters2D); chaId++) {
+          const Character2D& ch = Characters2D[ScrWork[SW_CHA1SURF + chaId]];
+          const uint64_t sig =
+              (static_cast<uint64_t>(ch.Status) << 40) |
+              (static_cast<uint64_t>(ch.Layers[0]) << 24) |
+              (static_cast<uint64_t>(ScrWork[SW_CHA1NO +
+                                        Profile::Vm::ScrWorkChaStructSize *
+                                            chaId] &
+                                       0xFFFFFF) << 0);
+          if (sig == lastSig[chaId]) continue;
+          lastSig[chaId] = sig;
+          ImpLog(LogLevel::Warning, LogChannel::General,
+                 "[charatrace] chaId={:d} buf={:d} status={:d} show={} "
+                 "layers={{{},{}}} no={:#x} face={:d} alpha={} pos=({:.0f},"
+                 "{:.0f}) scale=({:.2f},{:.2f})\n",
+                 chaId, ScrWork[SW_CHA1SURF + chaId], (int)ch.Status, ch.Show,
+                 ch.Layers[0], ch.Layers[1],
+                 ScrWork[SW_CHA1NO + Profile::Vm::ScrWorkChaStructSize * chaId],
+                 ch.Face,
+                 ScrWork[SW_CHA1ALPHA +
+                         Profile::Vm::ScrWorkChaStructSize * chaId],
+                 ch.Position.x, ch.Position.y, ch.Scale.x, ch.Scale.y);
+        }
+      }
       for (int chaId = 0; chaId < std::ssize(Characters2D); chaId++) {
         int bufId = ScrWork[SW_CHA1SURF + chaId];
         Characters2D[bufId].UpdateState(chaId);

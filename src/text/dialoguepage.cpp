@@ -196,18 +196,26 @@ void DialoguePage::Render(const float alpha,
   glm::vec4 opacityTint(1.0f);
   opacityTint.a = glm::smoothstep(0.0f, 1.0f, FadeAnimation.Progress) * alpha;
 
-  // Debug aid: IMPACTO_TEXT_TRACE=1 dumps every page render state so the
-  // dialogue pipeline can be verified from the log alone.
+  // Debug aid: IMPACTO_TEXT_TRACE=1 dumps the page render state (on change)
+  // and every parsed line so the dialogue pipeline is verifiable from the log.
   static const bool textTrace = getenv("IMPACTO_TEXT_TRACE") != nullptr; (void)textTrace;
   if (textTrace) {
-    ImpLog(
-        LogLevel::Warning, LogChannel::General,
-        "[texttrace] page {:d} render: state={:d} glyphs={:d} name={:d} "
-        "winType={:#x} winType4362={:#x} fade={:.2f} mode={:d}\n",
-        Id, (int)GetState(), Glyphs.size(), Name.size(),
-        ScrWork[SW_MESWIN0TYPE + Profile::Vm::ScrWorkMesStructSize * Id],
-        ScrWork[4362 + Profile::Vm::ScrWorkMesStructSize * Id],
-        FadeAnimation.Progress, (int)GetMode());
+    static uint32_t lastSig[8] = {};
+    const uint32_t sig = (static_cast<uint32_t>(Glyphs.size()) << 12) |
+                         (static_cast<uint32_t>(GetState()) << 8) |
+                         (ScrWork[SW_MESWIN0TYPE +
+                                  Profile::Vm::ScrWorkMesStructSize * Id] &
+                          0xFF);
+    if (Id < 8 && sig != lastSig[Id]) {
+      lastSig[Id] = sig;
+      ImpLog(
+          LogLevel::Warning, LogChannel::General,
+          "[texttrace] page {:d} render: state={:d} glyphs={:d} name={:d} "
+          "winType={:#x} fade={:.2f} mode={:d}\n",
+          Id, (int)GetState(), Glyphs.size(), Name.size(),
+          ScrWork[SW_MESWIN0TYPE + Profile::Vm::ScrWorkMesStructSize * Id],
+          FadeAnimation.Progress, (int)GetMode());
+    }
   }
 
   const int winType =
