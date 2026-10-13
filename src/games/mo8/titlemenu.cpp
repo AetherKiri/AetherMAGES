@@ -201,6 +201,17 @@ void TitleMenu::Show() {
         PressToStartAnimation.State == AnimationState::Stopped) {
       PressToStartAnimation.StartIn();
     }
+    // Keyboard/gamepad confirmation path: focus the first main entry so
+    // ControlType::OK activates it (Button::UpdateInput needs focus; mouse
+    // hover focusing is handled by Group::UpdateInput). MenuButtonOnClick
+    // then raises SF_TITLEEND + SW_TITLECUR, which the startup script's
+    // title loop polls (0x1012) to route into the game.
+    if (CurrentlyFocusedElement == 0 && !MainItems->Children.empty()) {
+      Widget* first = MainItems->Children.front();
+      FocusStart[0] = first;
+      CurrentlyFocusedElement = first;
+      first->HasFocus = true;
+    }
   }
 }
 void TitleMenu::Hide() {

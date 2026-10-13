@@ -41,10 +41,13 @@
     name = ScriptGetStrAddress(thread->ScriptBufferId, stringNum); \
   }                                                                \
   (void)0
-#define PopMsbString(name)                                      \
-  uint32_t name;                                                \
-  {                                                             \
-    PopExpression(stringNum);                                   \
-    name = MsbGetStrAddress(thread->ScriptBufferId, stringNum); \
-  }                                                             \
+#define PopMsbString(name)                                        \
+  BufferOffsetContext name;                                  \
+  {                                                              \
+    PopExpression(stringNum);                                    \
+    name.IpOffset =                                              \
+        MsbGetStrAddress(thread->ScriptBufferId, stringNum);     \
+    name.ScriptBufferId =                                        \
+        MsbScriptBufferAliasBase + thread->ScriptBufferId;   \
+  }                                                              \
   (void)0

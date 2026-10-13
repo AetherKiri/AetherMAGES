@@ -216,6 +216,7 @@ bool LoadMsb(uint32_t bufferId, uint32_t fileId) {
     return false;
   }
   MsbBuffers[bufferId] = std::span(static_cast<uint8_t*>(file), fileSize);
+  ScriptBuffers[MsbScriptBufferAliasBase + bufferId] = MsbBuffers[bufferId];
   return true;
 }
 

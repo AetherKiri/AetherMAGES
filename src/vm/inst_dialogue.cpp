@@ -540,7 +540,18 @@ VmInstruction(InstMes) {
   if (acted) animationId = ExpressionEval(thread);
 
   if (characterId == 32) characterId = 0;
-  PopUint16(lineId);
+  // Original InstMes (Game.exe 0x441630): the line id slot is a plain u16
+  // label number only in the non-MSB path; when the MSB bit is set the id is
+  // a full expression evaluated in place (FUN_0041db30 + FUN_00444fe0
+  // resolver). Reading a fixed u16 for MSB desynchronises the instruction
+  // pointer.
+  uint32_t lineId;
+  if (MSB) {
+    lineId = ExpressionEval(thread);
+  } else {
+    PopUint16(lineIdTemp);
+    lineId = lineIdTemp;
+  }
   const uint32_t line =
       MSB ? MsbGetStrAddress(thread->ScriptBufferId, lineId)
           : ScriptGetStrAddress(thread->ScriptBufferId, lineId);
@@ -565,8 +576,21 @@ VmInstruction(InstMes) {
   }
 
   uint32_t oldIp = thread->IpOffset;
-  thread->IpOffset = line;
-  dialoguePage.AddString(thread, audioId, acted, animationId, characterId);
+  // MSB strings resolve into the .msb blob: switch the thread to the msb
+  // alias buffer (see MsbScriptBufferAliasBase) so the parser reads the
+  // string from the right memory, and restore the script buffer afterwards.
+  uint32_t oldScriptBufferId = thread->ScriptBufferId;
+  if (MSB) {
+    thread->ScriptBufferId += MsbScriptBufferAliasBase;
+    thread->IpOffset = line;
+    dialoguePage.AddString(thread, audioId, acted, animationId, characterId);
+    thread->ScriptBufferId = oldScriptBufferId;
+    thread->IpOffset = oldIp;
+  } else {
+    thread->IpOffset = line;
+    dialoguePage.AddString(thread, audioId, acted, animationId, characterId);
+    thread->IpOffset = oldIp;
+  }
   ResetInstruction;
   if (!GetFlag(SF_MESSAVEPOINT_SSP + thread->DialoguePageId)) {
     if (!(ScrWork[thread->DialoguePageId * Profile::Vm::ScrWorkMesStructSize +
@@ -962,8 +986,7 @@ VmInstruction(InstSel) {
     }
     case 0x81: {
       PopMsbString(line);
-      UI::SelectionMenuPtr->AddChoice(
-          {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = line});
+      UI::SelectionMenuPtr->AddChoice(line);
     } break;
     case 2: {
       PopUint16(selStrNum);
@@ -976,8 +999,7 @@ VmInstruction(InstSel) {
     case 0x82: {
       PopMsbString(line);
       PopExpression(arg2);
-      UI::SelectionMenuPtr->AddChoice(
-          {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = line});
+      UI::SelectionMenuPtr->AddChoice(line);
     } break;
   }
 }
@@ -1216,20 +1238,30 @@ VmInstruction(InstSetRevMes) {
     ExpressionEval(thread);
   }
 
+  // Original SetRevMes (Game.exe 0x444060): with the expression bit set the
+  // line id is an expression resolved through the MSB resolver (FUN_0041db30
+  // + FUN_00444fe0) and the string lives in the .msb blob (alias buffer);
+  // otherwise it is a u16 label number inside the script (FUN_00444f90).
   int lineId;
+  BufferOffsetContext lineCtx;
   if (expression) {
     lineId = ExpressionEval(thread);
+    lineCtx = {.ScriptBufferId = MsbScriptBufferAliasBase +
+                                 thread->ScriptBufferId,
+               .IpOffset = MsbGetStrAddress(thread->ScriptBufferId, lineId)};
   } else {
     PopUint16(lineIdTemp);
     lineId = lineIdTemp;
+    lineCtx = {.ScriptBufferId = thread->ScriptBufferId,
+               .IpOffset = ScriptGetStrAddress(thread->ScriptBufferId,
+                                               lineId)};
   }
-  uint32_t line = ScriptGetStrAddress(thread->ScriptBufferId, lineId);
 
   uint32_t scriptId = LoadedScriptMetas[thread->ScriptBufferId].Id;
 
   SaveSystem::SetLineRead(scriptId, lineId);
   UI::BacklogMenuPtr->AddMessage(
-      {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = line}, audioId,
+      lineCtx, audioId,
       animationId);
 }
 

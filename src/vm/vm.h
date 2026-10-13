@@ -48,8 +48,16 @@ void ControlThreadGroup(ThreadGroupControlType controlType, uint32_t groupId);
 void DestroyThread(Sc3VmThread* thread);
 void RunThread(Sc3VmThread* thread, float dt);
 
-inline std::span<uint8_t> ScriptBuffers[MaxLoadedScripts];
+// Script buffers 0..MaxLoadedScripts-1 hold .scx data. Buffer ids
+// MaxLoadedScripts..2*MaxLoadedScripts-1 alias the parallel MsbBuffers so
+// string parsing (StringToken/DialoguePage/Backlog) can read MSB-resolved
+// string offsets through the same ScriptBuffers accessor the thread uses.
+// The original resolves MSB strings to pointers into the .msb blob
+// (FUN_00444fe0); the alias ids reproduce that without a second ip accessor.
+inline std::span<uint8_t> ScriptBuffers[MaxLoadedScripts * 2];
 inline std::span<uint8_t> MsbBuffers[MaxLoadedScripts];
+
+inline uint32_t constexpr MsbScriptBufferAliasBase = MaxLoadedScripts;
 
 inline Io::FileMeta LoadedScriptMetas[MaxLoadedScripts];
 

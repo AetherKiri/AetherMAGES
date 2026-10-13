@@ -86,7 +86,17 @@ void TextParser::ParseStringToken<STT_RubyBaseStart>(const StringToken& token) {
 template <>
 void TextParser::ParseStringToken<STT_RubyTextStart>(const StringToken& token) {
   assert(ParsingState == TextParsingState::RubyBase);
-  RubyChunks.back().FinishBase(Glyphs.size());
+  // Some titles emit ruby-text-start without a ruby-base prefix; treat it
+  // as a plain ruby start instead of dereferencing an empty chunk list.
+  if (ParsingState != TextParsingState::RubyBase || RubyChunks.empty()) {
+    if (RubyChunks.empty()) {
+      RubyChunks.emplace_back().FirstBaseCharacter = Glyphs.size();
+    } else {
+      RubyChunks.back().FinishBase(Glyphs.size());
+    }
+  } else {
+    RubyChunks.back().FinishBase(Glyphs.size());
+  }
   ParsingState = TextParsingState::RubyAnnotation;
 }
 
@@ -94,7 +104,7 @@ template <>
 void TextParser::ParseStringToken<STT_RubyTextEnd>(const StringToken& token) {
   // At least S;G uses [ruby-base]link text[ruby-text-end] for mails,
   // with no ruby-text-start
-  if (ParsingState == TextParsingState::RubyBase) {
+  if (ParsingState == TextParsingState::RubyBase && !RubyChunks.empty()) {
     RubyChunks.back().FinishBase(Glyphs.size());
   }
 

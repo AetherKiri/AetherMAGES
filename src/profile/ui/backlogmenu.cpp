@@ -23,6 +23,11 @@ void Configure() {
     Type = EnsureGetMember<BacklogMenuType>("Type");
 
     if (Type == BacklogMenuType::None) {
+      // Keep a functional (invisible) backlog: the generic template still
+      // stores entries, and a zero-capacity circular_buffer would corrupt
+      // memory on the first AddMessage. Rendered under DrawComponent::None,
+      // so nothing shows up until a real MO8 backlog UI exists.
+      MaxEntryCount = 400;
       UI::BacklogMenuPtr = new UI::BacklogMenu<Widgets::BacklogEntry>();
       UI::Menus[Game::DrawComponentType::None].push_back(UI::BacklogMenuPtr);
 

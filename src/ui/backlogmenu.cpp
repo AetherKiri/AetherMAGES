@@ -362,9 +362,12 @@ void BacklogMenu<EntryType>::AddMessage(Vm::BufferOffsetContext scrCtx,
   const glm::vec2 entryPos =
       Entries.empty()
           ? EntriesStart
-          : glm::vec2(EntriesStart.x,
-                      Entries.front().Page.Glyphs.back().DestRect.Bottom() +
-                          EntryYPadding);
+          : (Entries.front().Page.Glyphs.empty()
+                 ? glm::vec2(EntriesStart.x, EntriesStart.y)
+                 : glm::vec2(EntriesStart.x,
+                             Entries.front().Page.Glyphs.back().DestRect
+                                     .Bottom() +
+                                 EntryYPadding));
 
   if (Entries.full()) {
     ItemsHeight -= Entries.back().Bounds.Height + EntryYPadding;

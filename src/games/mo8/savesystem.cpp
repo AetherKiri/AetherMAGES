@@ -43,6 +43,17 @@ uint16_t ChecksumXor(uint8_t const* data) {
 
 }  // namespace
 
+// The entry tables live inside the 0x0D74..0x8574 region of the system data
+// (not yet parsed). The base class keeps raw entry pointers, so allocate
+// placeholder entries up front - InstAutoSave probes QuickSaveEntries via
+// GetQuickSaveOpenSlot the moment the game script starts.
+SaveSystem::SaveSystem() {
+  for (int i = 0; i < MaxSaveEntries; i++) {
+    QuickSaveEntries[i] = new SaveFileEntryBase();
+    FullSaveEntries[i] = new SaveFileEntryBase();
+  }
+}
+
 SaveError SaveSystem::MountSaveFile(std::vector<QueuedTexture>& textures) {
   Io::Stream* instream = nullptr;
   IoError err = Io::PhysicalFileStream::Create(SaveFilePath, &instream);

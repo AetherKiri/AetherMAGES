@@ -628,8 +628,7 @@ VmInstruction(InstSystemMes) {
       }
       if (exprOperand) {
         PopMsbString(message);
-        box->AddMessage(
-            {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+        box->AddMessage(message);
       } else {
         PopUint16(sysMesStrNum);
         const uint32_t message =
@@ -650,8 +649,7 @@ VmInstruction(InstSystemMes) {
       }
       if (exprOperand) {
         PopMsbString(message);
-        box->AddChoice(
-            {.ScriptBufferId = thread->ScriptBufferId, .IpOffset = message});
+        box->AddChoice(message);
       } else {
         PopUint16(sysSelStrNum);
         auto message = ScriptGetStrAddress(thread->ScriptBufferId, sysSelStrNum);

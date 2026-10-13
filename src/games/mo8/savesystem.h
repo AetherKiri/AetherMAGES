@@ -25,6 +25,7 @@ using namespace Impacto::SaveSystem;
 //   +0x8574  0x400 bytes tips data
 class SaveSystem : public SaveSystemBase {
  public:
+  SaveSystem();
   SaveError CheckSaveFile() const override { return SaveError::OK; }
   SaveError MountSaveFile(std::vector<QueuedTexture>& textures) override;
 
