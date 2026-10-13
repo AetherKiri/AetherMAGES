@@ -432,6 +432,24 @@ void TextParser::FinishName() {
       break;
 
     case FixedPos:
+      if (ModeInfo.UseNameLengthL) {
+        // MO8: the name is laid out inside the fixed band
+        // [NamePos, NamePos + NameLengthL] (the name ribbon); this is where
+        // it gets centered for alignment Center.
+        pos = ModeInfo.NamePos;
+        switch (ModeInfo.NameAlignment) {
+          case Left:
+            break;
+          case Center:
+            pos.x += (ModeInfo.NameLengthL - nameWidth) / 2.0f;
+            break;
+          case Right:
+            pos.x += ModeInfo.NameLengthL - nameWidth;
+            break;
+        }
+        break;
+      }
+
       pos = ModeInfo.NamePos + glm::vec2(ModeInfo.MaxNameWidth, 0.0f);
 
       if (OldNametagPositioning) {

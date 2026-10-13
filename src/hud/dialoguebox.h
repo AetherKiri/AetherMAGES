@@ -56,6 +56,7 @@ class PlainDialogueBox : public DialogueBox {
 
   void Show() override;
   void Hide() override;
+  void Update(float dt) override;
   void UpdateInput(float dt) override;
   void Render(DialoguePageMode mode, const NameInfo& nameInfo,
               glm::vec4 tint) override;

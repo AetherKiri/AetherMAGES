@@ -806,7 +806,7 @@ VmInstruction(InstSetMesModeFormat) {
       static_cast<TextModeInfo::NameAlignmentType>(info.NamePosFlags & 0b111));
   setVal(dest.UseNameLengthL, UseNameLengthL,
          (info.NamePosFlags & 0b1000) != 0);
-  setVal(dest.NameLengthL, NameLengthL, info.NameLengthL);
+  setVal(dest.NameLengthL, NameLengthL, info.NameLengthL * designScale.x);
 }  // namespace Vm
 VmInstruction(InstSetNGmoji) {
   StartInstruction;
