@@ -36,21 +36,33 @@ enum StringTokenType : uint8_t {
   STT_DialogueLineStart = 0x02,
   STT_Present = 0x03,
   STT_SetColor = 0x04,
+  // MO8-only tokens (Game.exe FUN_00432510 switch): 1-byte, no glyph content
+  STT_Token05 = 0x05,
+  STT_Token06 = 0x06,
+  // MO8: 1-byte argument, no glyph content
+  STT_Token07 = 0x07,
   STT_Present_Clear = 0x08,
   STT_RubyBaseStart = 0x09,
   STT_RubyTextStart = 0x0A,
   STT_RubyTextEnd = 0x0B,
   STT_SetFontSize = 0x0C,
+  STT_Token0D = 0x0D,
   STT_PrintInParallel = 0x0E,
   STT_CenterText = 0x0F,
+  STT_Token10 = 0x10,
   STT_SetTopMargin = 0x11,
   STT_SetLeftMargin = 0x12,
   STT_GetHardcodedValue = 0x13,
+  // MO8: like 0x13, prints a ScrWork value as decimal digits
+  STT_Token14 = 0x14,
   STT_EvaluateExpression = 0x15,
   STT_UnlockTip = 0x16,
+  STT_Token17 = 0x17,
   STT_Present_0x18 = 0x18,
   STT_AutoForward_SyncVoice = 0x19,
   STT_AutoForward = 0x1A,
+  // MO8: 1-byte argument (proportional width table switch)
+  STT_Token1B = 0x1B,
   STT_RubyCenterPerCharacter = 0x1E,
   STT_AltLineBreak = 0x1F,
 

@@ -122,6 +122,16 @@ void SelectionMenu::Show() {
   }
 
   ChoiceItems->Show();
+  // Keyboard/gamepad confirmation path: focus the first choice so
+  // ControlType::OK activates it (Button::UpdateInput requires focus).
+  // InstSelect type 1 polls ChoiceMade; without initial focus RETURN never
+  // selects anything and the VM blocks forever on the choice.
+  if (CurrentlyFocusedElement == 0 && !ChoiceItems->Children.empty()) {
+    Widget* first = ChoiceItems->Children.front();
+    FocusStart[0] = first;
+    CurrentlyFocusedElement = first;
+    first->HasFocus = true;
+  }
   FadeAnimation.StartIn();
   State = Showing;
   Menu::Show();

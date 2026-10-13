@@ -35,6 +35,12 @@ int StringToken::Read(Vm::Sc3VmThread* ctx) {
     case STT_CharacterNameStart:
     case STT_DialogueLineStart:
     case STT_Present:
+    // MO8-only 1-byte tokens (no glyph content)
+    case STT_Token05:
+    case STT_Token06:
+    case STT_Token0D:
+    case STT_Token10:
+    case STT_Token17:
     case STT_Present_Clear:
     case STT_RubyBaseStart:
     case STT_RubyTextStart:
@@ -51,10 +57,22 @@ int StringToken::Read(Vm::Sc3VmThread* ctx) {
       break;
     }
 
+    // MO8-only tokens with a 1-byte argument
+    case STT_Token07:
+    case STT_Token1B: {
+      Type = (StringTokenType)c;
+      Val_Uint16 = *ctx->GetIp();
+      ctx->IpOffset++;
+      bytesRead++;
+      break;
+    }
+
     case STT_SetFontSize:
     case STT_SetTopMargin:
     case STT_SetLeftMargin:
     case STT_GetHardcodedValue:
+    // MO8: like GetHardcodedValue (ScrWork index printed as digits)
+    case STT_Token14:
     case STT_UnlockTip: {
       Type = (StringTokenType)c;
       Val_Uint16 = (*ctx->GetIp() << 8) | *(ctx->GetIp() + 1);

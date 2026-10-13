@@ -5,6 +5,8 @@
 
 #include "../profile/dialogue.h"
 #include "../profile/games/chlcc/dialoguebox.h"
+#include "../profile/vm.h"
+#include "../profile/scriptvars.h"
 
 #include "../data/tipssystem.h"
 #include "../hud/tipsnotification.h"
@@ -474,6 +476,38 @@ void TextParser::FinishName() {
   }
 }
 
+template <>
+void TextParser::ParseStringToken<STT_GetHardcodedValue>(
+    const StringToken& token) {
+  // MO8 (Game.exe FUN_00432510 case 0x13): the 2-byte argument is a ScrWork
+  // index; its value is printed in decimal, each digit mapped through the
+  // ASCII charset ("_0123456789ABC..." index = glyph id, DAT_004f1d51).
+  if (Profile::Vm::GameInstructionSet != Vm::InstructionSet::MO8) return;
+
+  const int value = ScrWork[token.Val_Uint16];
+  const std::string str = std::to_string(value);
+  constexpr std::string_view Charset =
+      "_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+  for (const char c : str) {
+    const size_t idx = Charset.find(c);
+    if (idx == std::string_view::npos) continue;
+    const uint32_t glyphId = static_cast<uint32_t>(idx);
+    Glyphs.emplace_back(DialogueFont->PlaceGlyph(
+        glyphId, {ModeInfo.WindowPos.x + CurrentX, 0.0f}, FontSize,
+        CurrentColors, 1.0f));
+    CurrentX += DialogueFont->GetAdvanceWidth(glyphId) * FontSize /
+                DialogueFont->BitmapEmWidth;
+  }
+}
+
+template <>
+void TextParser::ParseStringToken<STT_Token14>(const StringToken& token) {
+  // MO8 case 0x14: same digit printing as 0x13 with a different ASCII
+  // charset order (only matters for letters, digits share positions).
+  ParseStringToken<STT_GetHardcodedValue>(token);
+}
+
 void DialogueTextParser::ParseString(Vm::Sc3VmThread* string) {
   using TokenParserProc = auto (TextParser::*)(const StringToken&)->void;
   constexpr static auto tokenParserLUT = []() {
@@ -505,6 +539,9 @@ void DialogueTextParser::ParseString(Vm::Sc3VmThread* string) {
     lut[STT_SetLeftMargin] =
         &DialogueTextParser::ParseStringToken<STT_SetLeftMargin>;
     lut[STT_UnlockTip] = &DialogueTextParser::ParseStringToken<STT_UnlockTip>;
+    lut[STT_GetHardcodedValue] =
+        &DialogueTextParser::ParseStringToken<STT_GetHardcodedValue>;
+    lut[STT_Token14] = &DialogueTextParser::ParseStringToken<STT_Token14>;
     lut[STT_Present_0x18] =
         &DialogueTextParser::ParseStringToken<STT_Present_0x18>;
     lut[STT_AutoForward_SyncVoice] =

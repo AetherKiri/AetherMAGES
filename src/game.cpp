@@ -463,9 +463,14 @@ static void RenderMain() {
 
     if ((+Profile::Game::GameFeatures & +GameFeature::Renderer2D) &&
         !(+Profile::Game::GameFeatures & +GameFeature::Scene3D)) {
-      // Debug aid: IMPACTO_CHARA_TRACE=1 dumps the character-sprite pipeline
-      // state once per frame so sprite visibility is verifiable from the log.
-      // Only logs on state change to keep the log readable.
+      // The game script can point several CHA slots at the same surface
+      // buffer (surf remapping during character swaps). The original draws
+      // each surface once per layer; drawing it once per slot renders the
+      // same MVL mesh twice at two slot positions (overlapping sprites).
+      // The debug aid: IMPACTO_CHARA_TRACE=1 dumps the character-sprite
+      // pipeline state once per frame so sprite visibility is verifiable
+      // from the log alone. Only logs on state change to keep the log
+      // readable.
       static const bool charaTrace = getenv("IMPACTO_CHARA_TRACE") != nullptr;
       if (charaTrace && layer == 0) {
         static std::array<uint64_t, MaxCharacters2D> lastSig{};
@@ -493,8 +498,13 @@ static void RenderMain() {
                  ch.Position.x, ch.Position.y, ch.Scale.x, ch.Scale.y);
         }
       }
+      static bool surfaceDrawn[MaxCharacters2D];
+      std::fill(std::begin(surfaceDrawn), std::end(surfaceDrawn), false);
       for (int chaId = 0; chaId < std::ssize(Characters2D); chaId++) {
         int bufId = ScrWork[SW_CHA1SURF + chaId];
+        if (bufId < 0 || bufId >= MaxCharacters2D) continue;
+        if (surfaceDrawn[bufId]) continue;
+        surfaceDrawn[bufId] = true;
         Characters2D[bufId].UpdateState(chaId);
         Characters2D[bufId].Render(layer);
       }
