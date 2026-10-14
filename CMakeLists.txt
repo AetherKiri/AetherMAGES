@@ -1490,7 +1490,8 @@ elseif (IMPACTO_BUILD_HOST)
         set(IMPACTO_HOST_DEP_DIRS "")
     endif()
     install(CODE "
-        set(_host_lib \"\$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/libimpacto_host.so\")
+        # Resolve from the build RPATH, before stale installed SONAMEs can win.
+        set(_host_lib \"$<TARGET_FILE:impacto>\")
         if (EXISTS \"\${_host_lib}\")
             file(GET_RUNTIME_DEPENDENCIES
                 RESOLVED_DEPENDENCIES_VAR _host_deps
@@ -1502,9 +1503,12 @@ elseif (IMPACTO_BUILD_HOST)
                     \"libvulkan\\\\.so(\\\\..*)?\"
                 )
             foreach (_dep IN LISTS _host_deps)
-                file(COPY \"\${_dep}\" DESTINATION \"${CMAKE_INSTALL_PREFIX}/lib\"
+                file(COPY \"\${_dep}\" DESTINATION \"\$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib\"
                     FOLLOW_SYMLINK_CHAIN)
             endforeach ()
+            if (_host_unresolved)
+                message(FATAL_ERROR \"Unresolved host dependencies: \${_host_unresolved}\")
+            endif ()
         endif ()
     ")
 elseif (WIN32)
@@ -1567,5 +1571,4 @@ else()
     install(DIRECTORY resources DESTINATION ${CMAKE_SOURCE_DIR}/android/app/src/main/assets PATTERN "*/gamedata/*" EXCLUDE)
     install(FILES gamedefinitions.lua DESTINATION ${CMAKE_SOURCE_DIR}/android/app/src/main/assets)
 endif()
-
 

@@ -25,6 +25,9 @@
       "features": [
         "avcodec",
         "avformat",
+        "bink2",
+        "gpl",
+        "version3",
         "swresample",
         "swscale",
         "dav1d",
@@ -56,7 +59,7 @@
   "overrides": [
     {
       "name": "ffmpeg",
-      "version": "7.1.2#5"
+      "version": "7.1.2#6"
     },
     {
       "name": "sdl3",

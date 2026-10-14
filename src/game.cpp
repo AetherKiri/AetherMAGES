@@ -413,6 +413,8 @@ void Update(float dt) {
     Video::VideoUpdate(dt);
   }
 
+  if (+Profile::Game::GameFeatures & +GameFeature::Audio) Audio::AudioEndTick();
+
   if (+Profile::Game::GameFeatures & +GameFeature::Audio &&
       +Profile::Game::GameFeatures & +GameFeature::Subtitles) {
     Audio::AudioSubtitlesUpdate();

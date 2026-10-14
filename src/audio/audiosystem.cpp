@@ -278,8 +278,11 @@ void AudioUpdate(float dt) {
   for (int i = 0; i < AC_Count; i++) {
     Channels[i]->Update(dt);
   }
+}
 
-  if (hostBackend) HostAudioBridge::Get().EndTick();
+void AudioEndTick() {
+  if (UserConfig::AdvancedSettings.ActiveAudioBackend == AudioBackendType::Host)
+    HostAudioBridge::Get().EndTick();
 }
 
 void AudioSubtitlesUpdate() {

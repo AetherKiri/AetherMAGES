@@ -1,6 +1,7 @@
 #include "ffmpegaudioplayer.h"
 
 #include "../../log.h"
+#include "../audiosystem.h"
 #include "../../video/ffmpegplayer.h"
 
 #include <algorithm>
@@ -66,6 +67,8 @@ void FFmpegAudioPlayer::InitConvertContext(AVCodecContext* codecCtx) {
   std::lock_guard<std::mutex> lock(StagingMutex);
   Converted.clear();
   FramesSubmitted = 0;
+  AudioClock.Set(Video::Clock::Microseconds{}, 0);
+  DecoderEOF = false;
 }
 
 void FFmpegAudioPlayer::Stop() {
@@ -78,6 +81,10 @@ void FFmpegAudioPlayer::Stop() {
 }
 
 void FFmpegAudioPlayer::Unload() {
+  ImpLog(LogLevel::Info, LogChannel::Video,
+         "[movietrace] audio submitted={:d} remaining={:d} decoder_eof={:d}\n",
+         FramesSubmitted, Converted.size() / HostAudioBridge::kOutputChannels,
+         DecoderEOF);
   Stop();
   ReleaseConvertContext();
   std::lock_guard<std::mutex> lock(StagingMutex);
@@ -105,12 +112,21 @@ void FFmpegAudioPlayer::FillAudioBuffers() {
     std::memcpy(Converted.data() + oldSize, AudioBuffer[0], bytes);
   };
 
-  while (Converted.size() < kMaxPendingSamples && !Player->AbortRequest) {
+  while (!DecoderEOF && Converted.size() < kMaxPendingSamples &&
+         !Player->AbortRequest) {
     Video::AVDecodedItem<AVMEDIA_TYPE_AUDIO> aFrame;
     if (!Player->AudioStream->FrameQueue.try_dequeue(aFrame)) {
       break;
     }
-    if (aFrame.Serial == INT32_MIN) break;
+    if (aFrame.Serial == INT32_MIN) {
+      DecoderEOF = true;
+      int outputSamples;
+      while ((outputSamples = swr_convert(AudioConvertContext, AudioBuffer,
+                                          StagingFrames, nullptr, 0)) > 0) {
+        appendConverted(outputSamples);
+      }
+      break;
+    }
 
     const int inSampleRate = aFrame.Frame.sampleRate();
     const int inFrames = aFrame.Frame.samplesCount();
@@ -126,11 +142,6 @@ void FFmpegAudioPlayer::FillAudioBuffers() {
                                     (const uint8_t**)aFrame.Frame.raw()->extended_data,
                                     inFrames);
     appendConverted(outputSamples);
-    // Drain anything the resampler still holds buffered from earlier calls.
-    while ((outputSamples = swr_convert(AudioConvertContext, AudioBuffer,
-                                        StagingFrames, nullptr, 0)) > 0) {
-      appendConverted(outputSamples);
-    }
   }
 
   PushStaging();
@@ -139,16 +150,16 @@ void FFmpegAudioPlayer::FillAudioBuffers() {
 // Caller must hold StagingMutex.
 void FFmpegAudioPlayer::PushStaging() {
   if (Converted.empty()) return;
-  const size_t frames = Converted.size() / HostAudioBridge::kOutputChannels;
-  HostAudioBridge::Get().SubmitFrames(Converted.data(), frames);
-  FramesSubmitted += frames;
-  Converted.clear();
+  auto mix = HostAudioBridge::Get().TickMixBuffer();
+  const size_t count = std::min(mix.size(), Converted.size());
+  const float gain = Audio::MasterVolume * Audio::GroupVolumes[Audio::ACG_Movie];
+  for (size_t i = 0; i < count; ++i) mix[i] += Converted[i] * gain;
+  FramesSubmitted += count / HostAudioBridge::kOutputChannels;
+  Converted.erase(Converted.begin(), Converted.begin() + count);
 }
 
 void FFmpegAudioPlayer::Process() {
-  if (Player->AudioStream->FrameQueue.peek() != nullptr) {
-    FillAudioBuffers();
-  }
+  FillAudioBuffers();
 
   auto& bridge = HostAudioBridge::Get();
   const double rate = (double)bridge.SampleRate();
@@ -160,15 +171,8 @@ void FFmpegAudioPlayer::Process() {
   double seconds = submitted / rate - (double)bridge.BufferedFrames() / rate;
   if (seconds < 0.0) seconds = 0.0;
 
-  const int streamRate = Player->AudioStream->CodecContext.sampleRate();
-  if (streamRate > 0 && Player->AudioStream->Duration > 0) {
-    const double duration =
-        (double)Player->AudioStream->Duration / (double)streamRate;
-    seconds = std::min(seconds, duration);
-  }
-
   auto audioS = std::chrono::duration_cast<Video::Clock::Microseconds>(
-      std::chrono::duration<double, std::micro>(seconds));
+      std::chrono::duration<double>(seconds));
   AudioClock.Set(audioS, 0);
   ImpLogSlow(LogLevel::Trace, LogChannel::Video, "samplePosition: {:f}\n",
              seconds);
@@ -178,6 +182,11 @@ void FFmpegAudioPlayer::Reinit() {
   std::lock_guard<std::mutex> lock(StagingMutex);
   Converted.clear();
   FramesSubmitted = 0;
+}
+
+bool FFmpegAudioPlayer::IsDrained() {
+  std::lock_guard<std::mutex> lock(StagingMutex);
+  return DecoderEOF && Converted.empty();
 }
 
 }  // namespace Host

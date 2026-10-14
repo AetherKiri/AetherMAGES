@@ -13,6 +13,7 @@ namespace Audio {
 
 void AudioInit();
 void AudioUpdate(float dt);
+void AudioEndTick();
 void AudioShutdown();
 void AudioReinit();
 

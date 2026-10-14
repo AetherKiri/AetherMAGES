@@ -17,6 +17,7 @@ extern "C" {
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <mutex>
 #include <optional>
 #include <system_error>
@@ -317,8 +318,11 @@ void FFmpegPlayer::Play(Io::Stream* stream, bool looping, bool alpha) {
     return;
   }
   StreamPtr.reset(stream);
+  FrameCount = 0;
+  TracePlayback = std::getenv("IMPACTO_MOVIE_TRACE") != nullptr;
   AbortRequest = false;
   SeekRequest = false;
+  ReaderEOF = false;
   Looping = looping;
   IsAlpha = alpha;
   ImpLog(LogLevel::Info, LogChannel::Video, "Opening file: {:s} from: {:s}\n",
@@ -409,6 +413,11 @@ void FFmpegPlayer::Play(Io::Stream* stream, bool looping, bool alpha) {
   }
 
   IsPlaying = true;
+  ImpLog(LogLevel::Info, LogChannel::Video,
+         "[movietrace] start file={:s} codec={:s} size={:d}x{:d} duration={:.3f} audio={:d} loop={:d}\n",
+         StreamPtr->Meta.FileName, VideoStream->CodecContext.codec().name(),
+         VideoStream->CodecContext.width(), VideoStream->CodecContext.height(),
+         FormatContext.duration().seconds(), AudioStream.has_value(), Looping);
 }
 
 void FFmpegPlayer::InitSubtitles(
@@ -484,6 +493,15 @@ void FFmpegPlayer::InitSubtitles(
 }
 
 void FFmpegPlayer::HandleSeekRequest() {
+  // Queue consumers and codec contexts must be quiescent before a seek.
+  // In particular, the reader cannot flush the SPSC frame queue while Update
+  // holds a pointer returned by peek(), or flush a codec being decoded.
+  AbortRequest = true;
+  ReadThread.join();
+  VideoStream->DecoderThread.join();
+  if (AudioStream) AudioStream->DecoderThread.join();
+  for (auto& stream : EmbeddedSubtitleStreams) stream.DecoderThread.join();
+
   std::error_code ec;
   FormatContext.seek(av::Timestamp(SeekPosition, av::TimeBaseQ), ec);
   if (ec) {
@@ -494,27 +512,49 @@ void FFmpegPlayer::HandleSeekRequest() {
   if (VideoStream) {
     VideoStream->FlushPacketQueue();
     VideoStream->FlushFrameQueue();
+    avcodec_flush_buffers(VideoStream->CodecContext.raw());
+    VideoStream->CurrentPacketSerial = VideoStream->PacketQueueSerial;
   }
 
   if (AudioStream) {
     AudioStream->FlushPacketQueue();
     AudioStream->FlushFrameQueue();
+    avcodec_flush_buffers(AudioStream->CodecContext.raw());
+    AudioStream->CurrentPacketSerial = AudioStream->PacketQueueSerial;
+    AudioPlayer->Unload();
+    AudioPlayer->InitConvertContext(AudioStream->CodecContext.raw());
+  }
+  for (auto& stream : EmbeddedSubtitleStreams) {
+    stream.FlushPacketQueue();
+    stream.FlushFrameQueue();
+    avcodec_flush_buffers(stream.CodecContext.raw());
+    stream.CurrentPacketSerial = stream.PacketQueueSerial;
   }
 
   FrameTimer = Clock::MonotonicTime{};
   PreviousFrameTimestamp = std::nullopt;
   SeekRequest = false;
   ReaderEOF = false;
+  VideoClock = Clock();
+  AbortRequest = false;
+  ReadThread = std::thread{&FFmpegPlayer::Read, this};
+  VideoStream->DecoderThread = std::thread{
+      &FFmpegPlayer::Decode<AVMEDIA_TYPE_VIDEO>, this, std::ref(*VideoStream)};
+  if (AudioStream) {
+    AudioStream->DecoderThread = std::thread{
+        &FFmpegPlayer::Decode<AVMEDIA_TYPE_AUDIO>, this, std::ref(*AudioStream)};
+  }
+  for (auto& stream : EmbeddedSubtitleStreams) {
+    stream.DecoderThread = std::thread{
+        &FFmpegPlayer::Decode<AVMEDIA_TYPE_SUBTITLE>, this, std::ref(stream)};
+  }
 }
 
 void FFmpegPlayer::Read() {
   while (!AbortRequest) {
-    if (SeekRequest) {
-      HandleSeekRequest();
-    }
-
     AVPacketItem item;
     if (ReaderEOF) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
     std::error_code ec;
@@ -573,6 +613,7 @@ void FFmpegPlayer::Read() {
 
 void FFmpegPlayer::ProcessVideoFrame(Frame_t<AVMEDIA_TYPE_VIDEO>& avFrame) {
   auto rawFrame = avFrame.raw();
+  if (!rawFrame) return;
   if (rawFrame->format == AV_PIX_FMT_NONE ||
       !(av_pix_fmt_desc_get(avFrame.pixelFormat())->flags &
         AV_PIX_FMT_FLAG_HWACCEL) ||
@@ -600,7 +641,7 @@ void FFmpegPlayer::Decode(FFmpegStream<MediaType>& stream) {
             break;
           }
           if (prevSerial != stream.CurrentPacketSerial) {
-            avcodec_flush_buffers(VideoStream->CodecContext.raw());
+            avcodec_flush_buffers(stream.CodecContext.raw());
             if constexpr (MediaType == AVMEDIA_TYPE_AUDIO) {
               AudioPlayer->Stop();
             }
@@ -661,7 +702,10 @@ void FFmpegPlayer::Decode(FFmpegStream<MediaType>& stream) {
 
   while (!AbortRequest) {
     AVPacketItem const* peek = stream.PacketQueue.peek();
-    if (peek == nullptr) continue;
+    if (peek == nullptr) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      continue;
+    }
 
     std::error_code ec;
     AVPacketItem packet = verifyPacket(peek);
@@ -691,6 +735,9 @@ template void FFmpegPlayer::Decode<AVMEDIA_TYPE_SUBTITLE>(
 
 void FFmpegPlayer::Stop() {
   if (IsPlaying) {
+    ImpLog(LogLevel::Info, LogChannel::Video,
+           "[movietrace] stop file={:s} presented={:d} reader_eof={:d}\n",
+           StreamPtr->Meta.FileName, FrameCount, ReaderEOF.load());
     IsPlaying = false;
     PlaybackStarted = false;
     AbortRequest = true;
@@ -738,6 +785,7 @@ void FFmpegPlayer::Seek(int64_t pos) {
 void FFmpegPlayer::Update(float dt) {
   if (IsPlaying) {
     using namespace std::literals::chrono_literals;
+    if (SeekRequest) HandleSeekRequest();
     if (AudioStream) AudioPlayer->Process();
 
     if (+Profile::Game::GameFeatures & +GameFeature::Subtitles && SubPlayer) {
@@ -755,6 +803,10 @@ void FFmpegPlayer::Update(float dt) {
     SetFlag(SF_MOVIE_DRAWWAIT, false);
 
     if (frame->Serial == INT32_MIN) {
+      if (AudioStream && !AudioPlayer->IsDrained()) return;
+      ImpLog(LogLevel::Info, LogChannel::Video,
+             "[movietrace] end file={:s} presented={:d} loop={:d}\n",
+             StreamPtr->Meta.FileName, FrameCount, Looping);
       if (Looping) {
         Seek(0);
       } else {
@@ -796,6 +848,30 @@ void FFmpegPlayer::Update(float dt) {
     }
 
     PreviousFrameTimestamp = frame->Timestamp;
+    ++FrameCount;
+    if (TracePlayback && (FrameCount == 1 || FrameCount % 150 == 0)) {
+      uint64_t hash = 14695981039346656037ULL;
+      const AVFrame* raw = frame->Frame.raw();
+      const int width = VideoStream->CodecContext.width();
+      const int height = VideoStream->CodecContext.height();
+      if (raw->format == AV_PIX_FMT_YUV420P) {
+        for (int plane = 0; plane < 3; ++plane) {
+          const int w = plane ? (width + 1) / 2 : width;
+          const int h = plane ? (height + 1) / 2 : height;
+          for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+              hash = (hash ^ raw->data[plane][y * raw->linesize[plane] + x]) *
+                     1099511628211ULL;
+            }
+          }
+        }
+      }
+      ImpLog(LogLevel::Info, LogChannel::Video,
+             "[movietrace] frame file={:s} n={:d} pts_us={:d} format={:d} yuv_hash={:016x} audio_us={:d}\n",
+             StreamPtr->Meta.FileName, FrameCount,
+             frame->Timestamp.toDuration<Clock::Microseconds>().count(),
+             raw->format, hash, MasterClock->Get().count());
+    }
     if (frame->Frame.pixelFormat() != SwVideoPixelFormat) {
       SwVideoPixelFormat = frame->Frame.pixelFormat();
       std::visit(

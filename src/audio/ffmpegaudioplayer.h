@@ -20,6 +20,7 @@ class FFmpegAudioPlayer {
   virtual void FillAudioBuffers() {};
   virtual void Process() {};
   virtual void Reinit() {};
+  virtual bool IsDrained() { return true; }
 
   virtual void Stop() {};
   virtual void Unload() {};

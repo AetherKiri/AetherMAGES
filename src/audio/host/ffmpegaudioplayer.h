@@ -14,8 +14,8 @@ namespace Host {
 
 /*
  * FFmpegAudioPlayer for the embedded host bridge: converts movie audio to
- * stereo float at the bridge's fixed output rate and pushes it into the FIFO
- * shared with the channel mixer. The playback clock is derived from the
+ * stereo float at the bridge's fixed output rate and mixes into each tick's
+ * output alongside the channels. The playback clock is derived from the
  * frames written minus the backlog still buffered for the host.
  */
 class FFmpegAudioPlayer : public Audio::FFmpegAudioPlayer {
@@ -29,6 +29,7 @@ class FFmpegAudioPlayer : public Audio::FFmpegAudioPlayer {
   void FillAudioBuffers() override;
   void Process() override;
   void Reinit() override;
+  bool IsDrained() override;
 
   void Stop() override;
   void Unload() override;
@@ -45,6 +46,7 @@ class FFmpegAudioPlayer : public Audio::FFmpegAudioPlayer {
   // Total frames handed to the bridge; the playback clock is derived from
   // this minus whatever the host has not consumed yet.
   uint64_t FramesSubmitted = 0;
+  bool DecoderEOF = false;
   // Staging capacity in frames (converted on demand).
   static int constexpr StagingFrames = 8192;
 };

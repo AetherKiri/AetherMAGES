@@ -18,6 +18,7 @@ void FFmpegStream<MediaType>::FlushPacketQueue() {
 
 template void FFmpegStream<AVMEDIA_TYPE_AUDIO>::FlushPacketQueue();
 template void FFmpegStream<AVMEDIA_TYPE_VIDEO>::FlushPacketQueue();
+template void FFmpegStream<AVMEDIA_TYPE_SUBTITLE>::FlushPacketQueue();
 
 template <AVMediaType MediaType>
 void FFmpegStream<MediaType>::FlushFrameQueue() {
@@ -26,6 +27,7 @@ void FFmpegStream<MediaType>::FlushFrameQueue() {
 }
 template void FFmpegStream<AVMEDIA_TYPE_AUDIO>::FlushFrameQueue();
 template void FFmpegStream<AVMEDIA_TYPE_VIDEO>::FlushFrameQueue();
+template void FFmpegStream<AVMEDIA_TYPE_SUBTITLE>::FlushFrameQueue();
 
 }  // namespace Video
 }  // namespace Impacto

@@ -52,8 +52,8 @@ class FFmpegPlayer : public VideoPlayer {
   void Decode(FFmpegStream<avType>& stream);
   void ProcessAudio();
 
-  std::atomic<bool> AbortRequest;
-  bool SeekRequest;
+  std::atomic<bool> AbortRequest{false};
+  bool SeekRequest = false;
   std::thread ReadThread;
   std::optional<FFmpegStream<AVMEDIA_TYPE_VIDEO>> VideoStream;
   std::optional<FFmpegStream<AVMEDIA_TYPE_AUDIO>> AudioStream;
@@ -100,13 +100,14 @@ class FFmpegPlayer : public VideoPlayer {
 
   bool IsAlpha = false;
   bool Looping = false;
-  bool ReaderEOF = false;
+  std::atomic<bool> ReaderEOF{false};
   bool PlaybackStarted = false;
   std::optional<av::Timestamp> PreviousFrameTimestamp{};
   Clock::MonotonicTime FrameTimer{};
   Clock::Microseconds MaxFrameDuration{};
   bool NoAudio = false;
   int FrameCount = 0;
+  bool TracePlayback = false;
 };
 
 }  // namespace Video
