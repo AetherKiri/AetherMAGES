@@ -23,15 +23,21 @@ FFmpegAudioPlayer::~FFmpegAudioPlayer() {
     Converted.clear();
     Converted.shrink_to_fit();
   }
-  av_freep(&AudioBuffer[0]);
+  ReleaseConvertContext();
+}
+
+void FFmpegAudioPlayer::ReleaseConvertContext() {
+  if (AudioBuffer != nullptr) {
+    av_freep(&AudioBuffer[0]);
+    av_freep(&AudioBuffer);
+  }
   swr_free(&AudioConvertContext);
 }
 
 void FFmpegAudioPlayer::InitConvertContext(AVCodecContext* codecCtx) {
   auto& bridge = HostAudioBridge::Get();
 
-  swr_free(&AudioConvertContext);
-  av_freep(&AudioBuffer[0]);
+  ReleaseConvertContext();
 
   AVChannelLayout stereoFormat;
   av_channel_layout_default(&stereoFormat, 2);
@@ -45,9 +51,17 @@ void FFmpegAudioPlayer::InitConvertContext(AVCodecContext* codecCtx) {
     return;
   }
 
-  swr_init(AudioConvertContext);
-  av_samples_alloc_array_and_samples(&AudioBuffer, &AudioLinesize, 2,
-                                     StagingFrames, AV_SAMPLE_FMT_FLT, 0);
+  res = swr_init(AudioConvertContext);
+  if (res >= 0) {
+    res = av_samples_alloc_array_and_samples(&AudioBuffer, &AudioLinesize, 2,
+                                            StagingFrames, AV_SAMPLE_FMT_FLT, 0);
+  }
+  if (res < 0) {
+    ImpLog(LogLevel::Error, LogChannel::Video,
+           "Could not initialize movie audio buffers: {}\n", res);
+    ReleaseConvertContext();
+    return;
+  }
 
   std::lock_guard<std::mutex> lock(StagingMutex);
   Converted.clear();
@@ -65,8 +79,7 @@ void FFmpegAudioPlayer::Stop() {
 
 void FFmpegAudioPlayer::Unload() {
   Stop();
-  av_freep(&AudioBuffer[0]);
-  swr_free(&AudioConvertContext);
+  ReleaseConvertContext();
   std::lock_guard<std::mutex> lock(StagingMutex);
   FramesSubmitted = 0;
 }
@@ -79,8 +92,8 @@ void FFmpegAudioPlayer::FillAudioBuffers() {
   auto& bridge = HostAudioBridge::Get();
   // Keep about 40ms of output staged between pushes, mirroring the OpenAL
   // buffer-queue pacing.
-  constexpr size_t kMaxPendingBytes =
-      2048 * HostAudioBridge::kOutputChannels * sizeof(float);
+  constexpr size_t kMaxPendingSamples =
+      2048 * HostAudioBridge::kOutputChannels;
 
   // Append one swr_convert() result to the staging buffer.
   const auto appendConverted = [&](int outputSamples) {
@@ -92,7 +105,7 @@ void FFmpegAudioPlayer::FillAudioBuffers() {
     std::memcpy(Converted.data() + oldSize, AudioBuffer[0], bytes);
   };
 
-  while (Converted.size() < kMaxPendingBytes && !Player->AbortRequest) {
+  while (Converted.size() < kMaxPendingSamples && !Player->AbortRequest) {
     Video::AVDecodedItem<AVMEDIA_TYPE_AUDIO> aFrame;
     if (!Player->AudioStream->FrameQueue.try_dequeue(aFrame)) {
       break;
@@ -127,8 +140,7 @@ void FFmpegAudioPlayer::FillAudioBuffers() {
 void FFmpegAudioPlayer::PushStaging() {
   if (Converted.empty()) return;
   const size_t frames = Converted.size() / HostAudioBridge::kOutputChannels;
-  HostAudioBridge::Get().SubmitFrames(
-      reinterpret_cast<const float*>(Converted.data()), frames);
+  HostAudioBridge::Get().SubmitFrames(Converted.data(), frames);
   FramesSubmitted += frames;
   Converted.clear();
 }

@@ -191,6 +191,11 @@ std::optional<av::Codec> findDecoderCodec(av::Stream const& avStream) {
 
   if constexpr (MediaType == AVMEDIA_TYPE_VIDEO) {
     const AVCodecDescriptor* desc = avcodec_descriptor_get(codecId);
+    if (desc == nullptr) {
+      ImpLog(LogLevel::Error, LogChannel::Video,
+             "Unsupported codec id: {:d}\n", static_cast<int>(codecId));
+      return std::nullopt;
+    }
 #ifdef __ANDROID__
     const std::string decoderName = fmt::format("{}_mediacodec", desc->name);
 #else
@@ -216,7 +221,9 @@ void FFmpegPlayer::OpenCodec(std::optional<FFmpegStream<MediaType>>& streamOpt,
   }
   std::optional<av::Codec> codec = findDecoderCodec<MediaType>(avStream);
   if (!codec) {
-    avStream.reset();
+    ImpLog(LogLevel::Error, LogChannel::Video,
+           "No decoder available for stream {:d}\n", streamId);
+    return;
   }
 
   DecodingContext_t<MediaType> decoderContext{avStream, *codec};
@@ -271,6 +278,7 @@ void FFmpegPlayer::OpenCodec(std::optional<FFmpegStream<MediaType>>& streamOpt,
     }();
     ImpLog(LogLevel::Error, channel, "Failed to open codec, error: {:s}",
            ec.message());
+    return;
   }
 
   double rate = 1;
@@ -322,6 +330,7 @@ void FFmpegPlayer::Play(Io::Stream* stream, bool looping, bool alpha) {
   if (ec) {
     ImpLog(LogLevel::Error, LogChannel::Video,
            "Error opening file, error: {:s}\n", ec.message());
+    FormatContext.close();
     StreamPtr.reset();
     return;
   }
@@ -330,6 +339,7 @@ void FFmpegPlayer::Play(Io::Stream* stream, bool looping, bool alpha) {
   if (ec) {
     ImpLog(LogLevel::Error, LogChannel::Video,
            "Error opening file, error: {:s}\n", ec.message());
+    FormatContext.close();
     StreamPtr.reset();
     return;
   }
@@ -357,13 +367,22 @@ void FFmpegPlayer::Play(Io::Stream* stream, bool looping, bool alpha) {
   if (videoStream.isVideo() && videoStream.isValid()) {
     OpenCodec<AVMEDIA_TYPE_VIDEO>(VideoStream, std::move(videoStream),
                                   videoStreamId);
-    ScrWork[SW_MOVIEFRAME] = 0;
-    ScrWork[SW_MOVIETOTALFRAME] = VideoStream->Duration;
   }
+  if (!VideoStream) {
+    ImpLog(LogLevel::Error, LogChannel::Video,
+           "Movie has no usable video decoder; playback cancelled\n");
+    FormatContext.close();
+    StreamPtr.reset();
+    return;
+  }
+  ScrWork[SW_MOVIEFRAME] = 0;
+  ScrWork[SW_MOVIETOTALFRAME] = VideoStream->Duration;
   if (audioStream.isAudio() && audioStream.isValid()) {
     OpenCodec<AVMEDIA_TYPE_AUDIO>(AudioStream, std::move(audioStream),
                                   audioStreamId);
-    AudioPlayer->InitConvertContext(AudioStream->CodecContext.raw());
+    if (AudioStream) {
+      AudioPlayer->InitConvertContext(AudioStream->CodecContext.raw());
+    }
   }
   VideoClock = Clock();
   MasterClock = &VideoClock;

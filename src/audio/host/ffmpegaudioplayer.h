@@ -34,13 +34,14 @@ class FFmpegAudioPlayer : public Audio::FFmpegAudioPlayer {
   void Unload() override;
 
  private:
+  void ReleaseConvertContext();
   void PushStaging();
 
   // Interleaved stereo f32 at the bridge rate, staged between swr calls.
   // Guarded by StagingMutex: the decoder thread may call Stop() while the
   // engine thread is mixing (mirrors OpenAL source-stop semantics).
   std::mutex StagingMutex;
-  std::vector<uint8_t> Converted;
+  std::vector<float> Converted;
   // Total frames handed to the bridge; the playback clock is derived from
   // this minus whatever the host has not consumed yet.
   uint64_t FramesSubmitted = 0;

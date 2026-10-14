@@ -86,8 +86,8 @@ VmInstruction(InstPlayMovie) {
     if (Video::Players[channel]->IsPlaying) Video::Players[channel]->Stop();
     Video::Players[channel]->Play(stream, flags & 8, flags & 4);
 
-    SetFlag(SF_MOVIE_DRAWWAIT + channel, true);
-    SetFlag(SF_MOVIEPLAY + channel, true);
+    SetFlag(SF_MOVIE_DRAWWAIT + channel, Video::Players[channel]->IsPlaying);
+    SetFlag(SF_MOVIEPLAY + channel, Video::Players[channel]->IsPlaying);
     SetFlag(SF_MOVIECANCEL + channel, false);
   }
 
@@ -136,8 +136,8 @@ static void PlayMovieOldCommon(Sc3VmThread* thread, uint8_t instType) {
     if (Video::Players[channel]->IsPlaying) Video::Players[channel]->Stop();
     Video::Players[channel]->Play(stream, playMode == 5, playMode == 5);
 
-    SetFlag(SF_MOVIE_DRAWWAIT + channel, true);
-    SetFlag(SF_MOVIEPLAY + channel, true);
+    SetFlag(SF_MOVIE_DRAWWAIT + channel, Video::Players[channel]->IsPlaying);
+    SetFlag(SF_MOVIEPLAY + channel, Video::Players[channel]->IsPlaying);
     SetFlag(SF_MOVIECANCEL + channel, false);
   }
 

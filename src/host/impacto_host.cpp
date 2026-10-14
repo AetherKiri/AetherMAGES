@@ -25,6 +25,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <filesystem>
@@ -116,6 +117,10 @@ struct HostState {
   bool QuitRequested = false;  // guarded by QueueMutex
 
   std::atomic<bool> GameOpened{false};
+  // Opt-in soak acceleration. Reads always render the current state.
+  uint32_t RenderInterval = 1;
+  uint64_t TickCount = 0;
+  bool RenderPending = false;
   std::atomic<bool> EngineAlive{false};
   std::atomic<bool> Paused{false};
   std::atomic<bool> ShouldQuit{false};
@@ -476,6 +481,17 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
   return IMPACTO_HOST_OK;
 }
 
+void RenderAndCapture(HostState* st) {
+  using namespace Impacto;
+  if (UserConfig::GetActiveGame().empty()) {
+    Game::LauncherRender();
+  } else {
+    Game::Render();
+  }
+  CaptureFrame();
+  st->RenderPending = false;
+}
+
 ImpactoHostResult DoTick(HostState* st, uint32_t deltaMs) {
   using namespace Impacto;
   if (!st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
@@ -491,12 +507,11 @@ ImpactoHostResult DoTick(HostState* st, uint32_t deltaMs) {
 
   if (UserConfig::GetActiveGame().empty()) {
     Game::LauncherUpdate(dt);
-    Game::LauncherRender();
   } else {
     Game::Update(dt);
-    Game::Render();
   }
-  CaptureFrame();
+  st->RenderPending = true;
+  if (++st->TickCount % st->RenderInterval == 0) RenderAndCapture(st);
 
   if (Game::ShouldQuit) st->ShouldQuit.store(true);
   return IMPACTO_HOST_OK;
@@ -614,6 +629,13 @@ int32_t impacto_host_create(const impacto_host_desc_t* desc, void** out_host) {
     st->WritableDir = writableDir.string();
   }
   st->InitialWidth = desc->initial_width;
+  if (const char* interval = std::getenv("IMPACTO_HOST_RENDER_INTERVAL")) {
+    char* end = nullptr;
+    long value = std::strtol(interval, &end, 10);
+    if (end != interval && *end == '\0' && value >= 1 && value <= 120) {
+      st->RenderInterval = static_cast<uint32_t>(value);
+    }
+  }
   st->InitialHeight = desc->initial_height;
   st->PendingWidth.store(desc->initial_width);
   st->PendingHeight.store(desc->initial_height);
@@ -735,6 +757,15 @@ int32_t impacto_host_read_frame_rgba(void* host, void* out_pixels,
     return IMPACTO_HOST_INVALID_ARGUMENT;
   }
   if (!st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
+#ifndef IMPACTO_DISABLE_OPENGL
+  if (st->RenderInterval > 1) {
+    auto result = PostCommand(st, [st] {
+      if (st->RenderPending) RenderAndCapture(st);
+      return IMPACTO_HOST_OK;
+    });
+    if (result != IMPACTO_HOST_OK) return result;
+  }
+#endif
   if (!Impacto::Host::HostBridge::Get().CopyFrame(out_pixels,
                                                   out_pixels_size)) {
     return IMPACTO_HOST_INVALID_STATE;
