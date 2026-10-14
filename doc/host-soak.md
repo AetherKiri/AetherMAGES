@@ -122,3 +122,19 @@ independent RGB in `decode-op01/`, the seek race stack in
 hash manifest. Earlier failures and the original ADV-only check failure remain
 available. Software-rendered soak wall time includes readback, logging and
 concurrent runs; it is not a playback performance benchmark.
+
+Round 12 Save/Load evidence is under `/tmp/opencode/round12/`. The accepted
+default-rendering interaction is in `cancel-fixed2/`: real mouse Save to full
+slot 02, right-click menu cancellation, story advancement, Load selection and
+confirmation, followed by the restored checkpoint-40 dialogue after 1200 ticks.
+`restart-final/` repeats Continue -> Load in a new process using the same
+sidecar and retains original-size PPM/PNG captures through `05-restored`.
+`slots-final.json` is the independent sidecar inspection result. Early failed
+attempts, black intermediate frames and the pre-fix script-alignment traces are
+retained for audit but are not acceptance results.
+
+The MO8 host implementation persists 48 full and 48 quick entries in the
+versioned, CRC-checked `SAVEDATA_MO8.DAT.host-slots` sidecar using temporary-file
+replacement. It preserves native state, checkpoint/thread restoration and
+240x135 RGB565 thumbnails. The original compressed MO8 save container was not
+reconstructed, so original-game save interoperability is not claimed.

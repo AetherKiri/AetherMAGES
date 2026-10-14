@@ -54,6 +54,8 @@ class TitleMenu : public Menu {
 
   void UpdateSubMenu(Animation* showAnimation, Widgets::Group* subMenuGroup,
                      bool* subMenuSelected);
+  void FocusButton(Widget* target);
+  void UpdateGroupInput(Widgets::Group* group, float dt);
 };
 
 }  // namespace MO8

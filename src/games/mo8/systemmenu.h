@@ -23,6 +23,8 @@ class SystemMenu : public Menu {
  private:
   Widgets::Group* MainItems;
   Animation FadeAnimation;
+  int LastMenuCount = 0;
+  bool ConsumeHudMenuPress = false;
   std::optional<int> LastFocusedButtonId;
 };
 

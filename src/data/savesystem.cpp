@@ -38,7 +38,8 @@ class SaveFileLoader : public Loadable<SaveFileLoader, SaveError> {
 
     // Let's not report errors until we finalize the implementation
     if (Profile::Vm::GameInstructionSet != Vm::InstructionSet::CC &&
-        Profile::Vm::GameInstructionSet != Vm::InstructionSet::CHLCC) {
+        Profile::Vm::GameInstructionSet != Vm::InstructionSet::CHLCC &&
+        Profile::Vm::GameInstructionSet != Vm::InstructionSet::MO8) {
       result = SaveError::OK;
     }
 
@@ -61,7 +62,8 @@ class SaveFileChecker : public Loadable<SaveFileChecker, SaveError> {
   void MainThreadOnLoad(SaveError result) {
     // Let's not report errors until we finalize the implementation
     if (Profile::Vm::GameInstructionSet != Vm::InstructionSet::CC &&
-        Profile::Vm::GameInstructionSet != Vm::InstructionSet::CHLCC) {
+        Profile::Vm::GameInstructionSet != Vm::InstructionSet::CHLCC &&
+        Profile::Vm::GameInstructionSet != Vm::InstructionSet::MO8) {
       result = SaveError::OK;
     }
 
@@ -81,7 +83,8 @@ class SaveFileWriter : public Loadable<SaveFileWriter, SaveError> {
   void MainThreadOnLoad(SaveError result) {
     // Let's not report errors until we finalize the implementation
     if (Profile::Vm::GameInstructionSet != Vm::InstructionSet::CC &&
-        Profile::Vm::GameInstructionSet != Vm::InstructionSet::CHLCC) {
+        Profile::Vm::GameInstructionSet != Vm::InstructionSet::CHLCC &&
+        Profile::Vm::GameInstructionSet != Vm::InstructionSet::MO8) {
       result = SaveError::OK;
     }
 

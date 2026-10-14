@@ -42,6 +42,7 @@ enum class SysMesBoxType : int {
   MO6TW,
   Darling,
   CC,
+  MO8,
 };
 enum class TitleMenuType : int {
   None,

@@ -4,6 +4,7 @@
 #include "../games/mo6tw/sysmesbox.h"
 #include "../games/darling/sysmesbox.h"
 #include "../games/cc/sysmesbox.h"
+#include "../../games/mo8/sysmesbox.h"
 
 #include "../profile_internal.h"
 
@@ -29,6 +30,11 @@ void Configure() {
       Darling::SysMesBox::Configure();
     } else if (Type == SysMesBoxType::CC) {
       CC::SysMesBox::Configure();
+    } else if (Type == SysMesBoxType::MO8) {
+      CHLCC::SysMesBox::Configure();
+      UI::SysMesBox::Factory = []() -> UI::SysMesBox* {
+        return new UI::MO8::SysMesBox();
+      };
     }
 
     TextFontSize = EnsureGetMember<float>("TextFontSize");

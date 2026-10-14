@@ -268,6 +268,7 @@ set(Impacto_Src
     src/games/mo8/systemmenu.cpp
     src/games/mo8/optionsmenu.cpp
     src/games/mo8/savemenu.cpp
+    src/games/mo8/sysmesbox.cpp
     src/games/mo8/savesystem.cpp
 
     src/games/darling/sysmesbox.cpp
@@ -635,6 +636,7 @@ set(Impacto_Header
     src/games/mo8/systemmenu.h
     src/games/mo8/optionsmenu.h
     src/games/mo8/savemenu.h
+    src/games/mo8/sysmesbox.h
 
     src/games/darling/sysmesbox.h
 
@@ -1571,4 +1573,3 @@ else()
     install(DIRECTORY resources DESTINATION ${CMAKE_SOURCE_DIR}/android/app/src/main/assets PATTERN "*/gamedata/*" EXCLUDE)
     install(FILES gamedefinitions.lua DESTINATION ${CMAKE_SOURCE_DIR}/android/app/src/main/assets)
 endif()
-

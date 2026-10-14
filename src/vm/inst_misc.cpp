@@ -458,12 +458,18 @@ VmInstruction(InstLoadData) {
     case 10: {
       PopExpression(arg1);
       PopExpression(arg2);
-      SaveSystem::LoadEntry(static_cast<SaveSystem::SaveType>(arg1), arg2);
-      ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,
-                 "STUB instruction LoadData(type: {:d}, arg1: {:d})\n", type,
-                 arg1);
+      if (Profile::Vm::GameInstructionSet == InstructionSet::MO8) {
+        // MO8 scripts use Full=1/Quick=2; the shared API uses Full=0/Quick=1.
+        if (arg1 == 1 || arg1 == 2)
+          SaveSystem::LoadEntry(arg1 == 1 ? SaveSystem::SaveType::Full
+                                         : SaveSystem::SaveType::Quick,
+                                arg2);
+      } else {
+        SaveSystem::LoadEntry(static_cast<SaveSystem::SaveType>(arg1), arg2);
+      }
     } break;
     case 1:
+      break;
     case 2:
     case 11:
       ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,

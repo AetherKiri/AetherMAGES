@@ -20,6 +20,19 @@ void Configure() {
   EntryXPadding = EnsureGetMember<float>("EntryXPadding");
   EntryStartY = EnsureGetMember<float>("EntryStartY");
   EntryYPadding = EnsureGetMember<float>("EntryYPadding");
+  EntrySprite = EnsureGetMember<Sprite>("EntrySprite");
+  EntryHighlightedSprite = EnsureGetMember<Sprite>("EntryHighlightedSprite");
+  EntryFocusBorderSprite = EnsureGetMember<Sprite>("EntryFocusBorderSprite");
+  EntryLockSprite = EnsureGetMember<Sprite>("EntryLockSprite");
+  ThumbnailOffset = EnsureGetMember<glm::vec2>("ThumbnailOffset");
+  ThumbnailSize = EnsureGetMember<glm::vec2>("ThumbnailSize");
+  EntryNumberOffset = EnsureGetMember<glm::vec2>("EntryNumberOffset");
+  EntryTitleOffset = EnsureGetMember<glm::vec2>("EntryTitleOffset");
+  EntryPlayTimeOffset = EnsureGetMember<glm::vec2>("EntryPlayTimeOffset");
+  EntrySaveDateOffset = EnsureGetMember<glm::vec2>("EntrySaveDateOffset");
+  EntryLockOffset = EnsureGetMember<glm::vec2>("EntryLockOffset");
+  EntryFontSize = EnsureGetMember<float>("EntryFontSize");
+  PageNumberPosition = EnsureGetMember<glm::vec2>("PageNumberPosition");
 
   QuickLoadTextSprite = EnsureGetMember<Sprite>("QuickLoadTextSprite");
   LoadTextSprite = EnsureGetMember<Sprite>("LoadTextSprite");

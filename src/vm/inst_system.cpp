@@ -79,6 +79,12 @@ VmInstruction(InstScriptLoad) {
     if (!Profile::Vm::UseSeparateMsbArchive) scriptId += 1;
   }
   LoadScript(bufferId, scriptId);
+  // MO8 reload scripts consume the original paired MES/SCX file ID.
+  // LoadScript tracks the physical SCX ID; retaining it here would add the
+  // pairing offset a second time when the save's resource script reloads it.
+  if (Profile::Vm::GameInstructionSet == InstructionSet::MO8 &&
+      Profile::Vm::UseMsbStrings && !Profile::Vm::UseSeparateMsbArchive)
+    ScrWork[SW_SCRIPTNO0 + bufferId] = scriptId - 1;
 }
 VmInstruction(InstWait) {
   StartInstruction;
@@ -1149,10 +1155,6 @@ VmInstruction(InstAutoSave) {
       if (Profile::Vm::UseReturnIds) {
         PopUint16(checkpointId);
         SaveSystem::SetCheckpointId(checkpointId);
-        ImpLogSlow(
-            LogLevel::Warning, LogChannel::VMStub,
-            "STUB instruction AutoSave(type: {:d}, checkpointId: {:d})\n", type,
-            checkpointId);
       } else {
         ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,
                    "STUB instruction AutoSave(type: {:d})\n", type);

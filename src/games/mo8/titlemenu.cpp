@@ -14,6 +14,7 @@
 #include "../../profile/game.h"
 #include "../../background2d.h"
 #include "../../vm/interface/input.h"
+#include "../../inputsystem.h"
 
 namespace Impacto {
 namespace UI {
@@ -37,6 +38,8 @@ void TitleMenu::ContinueButtonOnClick(Widgets::Button* target) {
   target->Hovered = false;
   ContinueSelected = true;
   AllowsScriptInput = false;
+  Vm::Interface::PADinputButtonWentDown &= ~Vm::Interface::PADcustom[5];
+  Vm::Interface::PADinputMouseWentDown &= ~Vm::Interface::PADcustom[5];
   Audio::PlayInGroup(Audio::ACG_SE, "sysse", 5, false, 0.0f);
 }
 
@@ -51,6 +54,9 @@ TitleMenu::TitleMenu() {
   MainItems = new Widgets::Group(this);
   ContinueItems = new Widgets::Group(this);
   GalleryItems = new Widgets::Group(this);
+  MainItems->FocusLock = false;
+  ContinueItems->FocusLock = false;
+  GalleryItems->FocusLock = false;
 
   auto onClick = [this](auto* btn) { return MenuButtonOnClick(btn); };
   auto continueOnClick = [this](auto* btn) {
@@ -58,13 +64,12 @@ TitleMenu::TitleMenu() {
   };
   auto galleryOnClick = [this](auto* btn) { return GalleryButtonOnClick(btn); };
 
-  Sprite nullSprite = Sprite();
-  nullSprite.Bounds = RectF(0.0f, 0.0f, 0.0f, 0.0f);
+  const Sprite& focus = MenuEntriesSprites[6];  // Atlas underline, not text.
 
   // New Game menu button
   NewGame = new Button(0, MenuEntriesSprites[NewGameSpriteIndex],
                        MenuEntriesHSprites[NewGameSpriteIndex],
-                       MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                        focus,
                        glm::vec2(MenuEntriesX, MenuEntriesFirstY));
   NewGame->OnClickHandler = onClick;
   NewGame->HighlightOffset = glm::vec2(0.0f);
@@ -73,7 +78,7 @@ TitleMenu::TitleMenu() {
   Continue = new Button(
       0, MenuEntriesSprites[ContinueSpriteIndex],
       MenuEntriesHSprites[ContinueSpriteIndex],
-      MenuEntriesHSprites[NewGameSpriteIndex + 1],
+      focus,
       glm::vec2(MenuEntriesX, MenuEntriesFirstY + (1 * MenuEntriesYPadding)));
   Continue->OnClickHandler = continueOnClick;
   Continue->HighlightOffset = glm::vec2(0.0f);
@@ -82,7 +87,7 @@ TitleMenu::TitleMenu() {
   Options = new Button(
       20, MenuEntriesSprites[OptionSpriteIndex],
       MenuEntriesHSprites[OptionSpriteIndex],
-      MenuEntriesHSprites[NewGameSpriteIndex + 1],
+      focus,
       glm::vec2(MenuEntriesX, MenuEntriesFirstY + (2 * MenuEntriesYPadding)));
   Options->OnClickHandler = onClick;
   Options->HighlightOffset = glm::vec2(0.0f);
@@ -91,7 +96,7 @@ TitleMenu::TitleMenu() {
   Gallery = new Button(
       0, MenuEntriesSprites[GallerySpriteIndex],
       MenuEntriesHSprites[GallerySpriteIndex],
-      MenuEntriesHSprites[NewGameSpriteIndex + 1],
+      focus,
       glm::vec2(MenuEntriesX, MenuEntriesFirstY + (3 * MenuEntriesYPadding)));
   Gallery->OnClickHandler = galleryOnClick;
   Gallery->HighlightOffset = glm::vec2(0.0f);
@@ -102,7 +107,7 @@ TitleMenu::TitleMenu() {
   // Load button
   Load = new Button(10, MenuEntriesSprites[LoadSpriteIndex],
                     MenuEntriesHSprites[LoadSpriteIndex],
-                    MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                    focus,
                     glm::vec2(MenuEntriesX, MenuEntriesFirstY));
   Load->OnClickHandler = onClick;
   Load->HighlightOffset = glm::vec2(0.0f);
@@ -111,7 +116,7 @@ TitleMenu::TitleMenu() {
   QuickLoad = new Button(
       11, MenuEntriesSprites[QuickLoadSpriteIndex],
       MenuEntriesHSprites[QuickLoadSpriteIndex],
-      MenuEntriesHSprites[NewGameSpriteIndex + 1],
+      focus,
       glm::vec2(MenuEntriesX, MenuEntriesFirstY + (1 * MenuEntriesYPadding)));
   QuickLoad->OnClickHandler = onClick;
   QuickLoad->HighlightOffset = glm::vec2(0.0f);
@@ -123,7 +128,7 @@ TitleMenu::TitleMenu() {
   AlbumButton =
       new Button(30, MenuEntriesSprites[AlbumSpriteIndex],
                  MenuEntriesHSprites[AlbumSpriteIndex],
-                 MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                  focus,
                  glm::vec2(MenuEntriesX, MenuEntriesGalleryFirstY +
                                              (index * MenuEntriesYPadding)));
   AlbumButton->OnClickHandler = onClick;
@@ -134,7 +139,7 @@ TitleMenu::TitleMenu() {
   MusicButton =
       new Button(31, MenuEntriesSprites[MusicSpriteIndex],
                  MenuEntriesHSprites[MusicSpriteIndex],
-                 MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                  focus,
                  glm::vec2(MenuEntriesX, MenuEntriesGalleryFirstY +
                                              (index * MenuEntriesYPadding)));
   MusicButton->OnClickHandler = onClick;
@@ -145,7 +150,7 @@ TitleMenu::TitleMenu() {
   ClearListButton =
       new Button(32, MenuEntriesSprites[ClearListSpriteIndex],
                  MenuEntriesHSprites[ClearListSpriteIndex],
-                 MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                  focus,
                  glm::vec2(MenuEntriesX, MenuEntriesGalleryFirstY +
                                              (index * MenuEntriesYPadding)));
   ClearListButton->OnClickHandler = onClick;
@@ -156,7 +161,7 @@ TitleMenu::TitleMenu() {
   WarningButton =
       new Button(33, MenuEntriesSprites[WarningSpriteIndex],
                  MenuEntriesHSprites[WarningSpriteIndex],
-                 MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                  focus,
                  glm::vec2(MenuEntriesX, MenuEntriesGalleryFirstY +
                                              (index * MenuEntriesYPadding)));
   WarningButton->OnClickHandler = onClick;
@@ -168,7 +173,7 @@ TitleMenu::TitleMenu() {
     AdditionalButton =
         new Button(34, MenuEntriesSprites[AdditionalSpriteIndex],
                    MenuEntriesHSprites[AdditionalSpriteIndex],
-                   MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                    focus,
                    glm::vec2(MenuEntriesX, MenuEntriesGalleryFirstY +
                                                (index * MenuEntriesYPadding)));
     AdditionalButton->OnClickHandler = onClick;
@@ -180,7 +185,7 @@ TitleMenu::TitleMenu() {
   DLCButton =
       new Button(35 - (!HasAdditional), MenuEntriesSprites[DLCSpriteIndex],
                  MenuEntriesHSprites[DLCSpriteIndex],
-                 MenuEntriesHSprites[NewGameSpriteIndex + 1],
+                  focus,
                  glm::vec2(MenuEntriesX, MenuEntriesGalleryFirstY +
                                              (index * MenuEntriesYPadding)));
   DLCButton->OnClickHandler = onClick;
@@ -191,8 +196,8 @@ TitleMenu::TitleMenu() {
 void TitleMenu::Show() {
   if (State == Hidden) {
     State = Shown;
-    if (UI::FocusedMenu != 0) {
-      LastFocusedMenu = UI::FocusedMenu;
+    LastFocusedMenu = UI::FocusedMenu;
+    if (LastFocusedMenu) {
       LastFocusedMenu->IsFocused = false;
     }
     IsFocused = true;
@@ -216,20 +221,30 @@ void TitleMenu::Show() {
 }
 void TitleMenu::Hide() {
   if (State == Shown) {
+    if (ContinueItems->VisibilityState != Hidden) ContinueItems->Hide();
+    if (GalleryItems->VisibilityState != Hidden) GalleryItems->Hide();
+    ContinueSelected = false;
+    GallerySelected = false;
+    MainItemsHideAnimation.Finish(AnimationDirection::Out);
+    ContinueItemsShowAnimation.Finish(AnimationDirection::Out);
+    GalleryItemsShowAnimation.Finish(AnimationDirection::Out);
+    if (MainItems->VisibilityState != Shown) MainItems->Show();
+    FocusButton(NewGame);
+    AllowsScriptInput = true;
     State = Hidden;
-    if (LastFocusedMenu != 0) {
+    if (UI::FocusedMenu == this) {
+      while (LastFocusedMenu &&
+             (LastFocusedMenu->State == Hidden ||
+              LastFocusedMenu->State == Hiding))
+        LastFocusedMenu = LastFocusedMenu->LastFocusedMenu;
       UI::FocusedMenu = LastFocusedMenu;
-      LastFocusedMenu->IsFocused = true;
-    } else {
-      UI::FocusedMenu = 0;
+      if (LastFocusedMenu) LastFocusedMenu->IsFocused = true;
     }
     IsFocused = false;
   }
 }
 
 void TitleMenu::Update(float dt) {
-  UpdateInput(dt);
-
   PrimaryFadeAnimation.Update(dt);
   MainItemsHideAnimation.Update(dt);
   ContinueItemsShowAnimation.Update(dt);
@@ -248,13 +263,26 @@ void TitleMenu::Update(float dt) {
     Gallery->Tint = glm::vec4(1.0f, 1.0f, 1.0f, GetFlag(803) ? 1.0f : 0.0f);
     Gallery->Enabled = GetFlag(803);
     MainItems->Update(dt);
-    MainItems->UpdateInput(dt);
     ContinueItems->Update(dt);
     GalleryItems->Update(dt);
-    if (ContinueSelected) {
-      ContinueItems->UpdateInput(dt);
-    } else if (GallerySelected) {
-      GalleryItems->UpdateInput(dt);
+    // Exactly one group owns input; a click that opens Continue must not
+    // activate its newly visible Load button in the same frame.
+    if (ScrWork[SW_TITLEMODE] == 5 && !GetFlag(SF_TITLEEND)) {
+      if (ContinueSelected) {
+        if (ContinueItemsShowAnimation.IsIn()) {
+          UpdateInput(dt);
+          UpdateGroupInput(ContinueItems, dt);
+        }
+      } else if (GallerySelected) {
+        if (GalleryItemsShowAnimation.IsIn()) {
+          UpdateInput(dt);
+          UpdateGroupInput(GalleryItems, dt);
+        }
+      } else if (MainItems->VisibilityState == Shown &&
+                 MainItemsHideAnimation.IsOut()) {
+        UpdateInput(dt);
+        UpdateGroupInput(MainItems, dt);
+      }
     }
 
     switch (ScrWork[SW_TITLEMODE]) {
@@ -347,15 +375,18 @@ void TitleMenu::UpdateSubMenu(Animation* showAnimation,
     MainItemsHideAnimation.StartIn();
   } else if (MainItemsHideAnimation.IsIn() && showAnimation->IsOut()) {
     if (subMenuGroup->VisibilityState != Hidden) {
-      MainItems->Show();
       subMenuGroup->Hide();
+      MainItems->Show();
       MainItemsHideAnimation.StartOut();
       *subMenuSelected = false;
       AllowsScriptInput = true;
+      FocusButton(subMenuGroup == ContinueItems ? Continue : Gallery);
     } else {
       MainItems->Hide();
       subMenuGroup->Show();
       showAnimation->StartIn();
+      if (!subMenuGroup->Children.empty())
+        FocusButton(subMenuGroup->Children.front());
     }
   } else if (showAnimation->IsIn() &&
              Vm::Interface::GetControlState(Vm::Interface::ControlType::Back)) {
@@ -364,6 +395,25 @@ void TitleMenu::UpdateSubMenu(Animation* showAnimation,
   }
   Vm::Interface::PADinputButtonWentDown &= ~Vm::Interface::PADcustom[6];
   Vm::Interface::PADinputMouseWentDown &= ~Vm::Interface::PADcustom[6];
+  Vm::Interface::PADinputButtonWentDown &= ~Vm::Interface::PADcustom[10];
+  Vm::Interface::PADinputMouseWentDown &= ~Vm::Interface::PADcustom[10];
+}
+
+void TitleMenu::FocusButton(Widget* target) {
+  if (CurrentlyFocusedElement) CurrentlyFocusedElement->HasFocus = false;
+  CurrentlyFocusedElement = target;
+  target->HasFocus = true;
+}
+
+void TitleMenu::UpdateGroupInput(Group* group, float dt) {
+  if (Input::CurrentInputDevice == Input::Device::Mouse ||
+      Input::CurrentInputDevice == Input::Device::Touch) {
+    for (auto* entry : group->Children) {
+      entry->Hovered = entry->Bounds.ContainsPoint(Input::CurMousePos);
+      if (entry->Hovered && entry->Enabled) FocusButton(entry);
+    }
+  }
+  group->UpdateInput(dt);
 }
 
 }  // namespace MO8

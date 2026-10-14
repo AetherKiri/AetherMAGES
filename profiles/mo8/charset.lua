@@ -1,6 +1,17 @@
 root.Charset = {
-    Flags = {}
+    Flags = {},
+    -- Verified against the first two rows of PC system/font1_1.dds.
+    -- These generated strings are used for slot/page numbers and timestamps.
+    CharacterToSc3 = {
+        [" "] = 0x8000,
+        ["/"] = 0x8040,
+        [":"] = 0x8041,
+    }
 };
+
+for i = 0, 9 do
+    root.Charset.CharacterToSc3[tostring(i)] = 0x8001 + i;
+end
 
 for i = 0, (64 * 116) - 1 do root.Charset.Flags[i] = 0; end
 

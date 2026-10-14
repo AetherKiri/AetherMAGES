@@ -10,7 +10,7 @@ using namespace Impacto::SaveSystem;
 // System data layout of the PC release (reverse engineered from Game.exe
 // 0x43EA30 SaveSystemData / 0x43EDA0 LoadSystemData):
 //
-//   +0x0000  u16 additive checksum, u16 xor checksum (over +0x04..+0x44BA)
+//   +0x0000  u16 additive checksum, u16 xor checksum (over +0x04..+0x896F)
 //   +0x0080  0x32 bytes  -> Flags[100..150)
 //   +0x00B2  0x28 bytes  -> Flags[460..500)
 //   +0x00DC  0x640 bytes -> ScrWork[1600..2000]   (byte offset 0x1900)
@@ -26,28 +26,36 @@ using namespace Impacto::SaveSystem;
 class SaveSystem : public SaveSystemBase {
  public:
   SaveSystem();
-  SaveError CheckSaveFile() const override { return SaveError::OK; }
+  SaveError CheckSaveFile() const override;
   SaveError MountSaveFile(std::vector<QueuedTexture>& textures) override;
 
   SaveError LoadSystemData() override;
   void SaveSystemData() override;
   void InitializeSystemData() override;
 
-  void SaveThumbnailData() override {}
-  void SaveMemory() override {}
-  void LoadEntry(SaveType type, int id) override {}
+  void SaveThumbnailData() override;
+  void SaveMemory() override;
+  void LoadEntry(SaveType type, int id) override;
+  void LoadMemoryNew(LoadProcess load) override;
   void FlushWorkingSaveEntry(SaveType type, int id, int autoSaveType) override;
   SaveError WriteSaveFile() override;
   uint32_t GetSavePlayTime(SaveType type, int id) const override {
-    return 0;
+    return GetSaveEntry<SaveFileEntryBase>(type, id)->PlayTime;
   }
-  uint8_t GetSaveFlags(SaveType type, int id) const override { return 0; }
-  void SetSaveFlags(SaveType type, int id, uint8_t flags) override {}
+  uint8_t GetSaveFlags(SaveType type, int id) const override {
+    return GetSaveEntry<SaveFileEntryBase>(type, id)->Flags;
+  }
+  void SetSaveFlags(SaveType type, int id, uint8_t flags) override;
   tm const& GetSaveDate(SaveType type, int id) const override {
-    return LastDateStub;
+    return GetSaveEntry<SaveFileEntryBase>(type, id)->SaveDate;
   }
-  uint8_t GetSaveStatus(SaveType type, int id) const override { return 0; }
-  int GetSaveTitle(SaveType type, int id) const override { return 0; }
+  uint8_t GetSaveStatus(SaveType type, int id) const override {
+    if (id < 0 || id >= MaxSaveEntries) return 0;
+    return GetSaveEntry<SaveFileEntryBase>(type, id)->Status;
+  }
+  int GetSaveTitle(SaveType type, int id) const override {
+    return GetSaveEntry<SaveFileEntryBase>(type, id)->SwTitle;
+  }
   uint32_t GetTipStatus(size_t tipId) const override { return 0; }
   void SetTipStatus(size_t tipId, bool isLocked, bool isUnread,
                     bool isNew) override {}
@@ -76,13 +84,29 @@ class SaveSystem : public SaveSystemBase {
   }
   bool GetBgmFlag(int id) const override { return false; }
   void SetBgmFlag(int id, bool flag) override {}
-  void SetCheckpointId(int id) override {}
+  void SetCheckpointId(int id) override { CheckpointId = id; }
   Sprite& GetSaveThumbnail(SaveType type, int id) override;
 
  private:
   std::array<uint8_t, 0x8974> SystemData{};
   bool SaveFileLoaded = false;
-  tm LastDateStub{};
+  struct Entry : SaveFileEntryBase {
+    // Native MO8 state ranges from Game.exe 0x43DDD0/0x43DFF0. Store
+    // explicit bytes, never a dump of C++ objects or renderer handles.
+    std::array<uint8_t, 0x42A8> State{};
+    std::array<uint8_t, 240 * 135 * 2> Thumbnail{};
+  };
+  std::array<Entry, MaxSaveEntries> FullEntries{};
+  std::array<Entry, MaxSaveEntries> QuickEntries{};
+  Entry WorkingEntry{};
+  int CheckpointId = 0;
+  bool WorkingValid = false;
+  SaveError SlotFileError = SaveError::OK;
+  void DecodeEntry(Entry& entry);
+  void EncodeEntry(Entry& entry);
+  void CaptureThumbnail(Entry& entry);
+  SaveError ReadSlots(std::vector<QueuedTexture>& textures);
+  SaveError WriteSlots();
 };
 
 }  // namespace MO8

@@ -450,6 +450,53 @@ VmInstruction(InstUnk1037) {
 VmInstruction(InstMapSystem) {
   StartInstruction;
   PopUint8(type);
+  if (Profile::Vm::GameInstructionSet == InstructionSet::MO8) {
+    // Game.exe 0x44DA60 is a parameter-consuming PC stub, not CCLCC's
+    // interactive map. In particular type 5 consumes no expressions during
+    // save resource reload (script 7 at 0x4055).
+    switch (type) {
+      case 0:
+      case 1:
+        thread->IpOffset++;
+        [[fallthrough]];
+      case 15:
+      case 16:
+      case 26: {
+        PopExpression(arg);
+      } break;
+      case 2:
+      case 3: {
+        thread->IpOffset++;
+        PopExpression(arg);
+        PopLocalLabel(target);
+        thread->IpOffset = target;
+      } break;
+      case 4:
+        thread->IpOffset += 12;
+        break;
+      case 40:
+      case 41: {
+        PopExpression(arg1);
+        PopExpression(arg2);
+        PopExpression(arg3);
+        PopExpression(arg4);
+        [[fallthrough]];
+      }
+      case 20:
+      case 21: {
+        PopExpression(arg1);
+        PopExpression(arg2);
+        [[fallthrough]];
+      }
+      case 18: {
+        PopExpression(arg1);
+        PopExpression(arg2);
+      } break;
+      default:
+        break;
+    }
+    return;
+  }
   auto& inst = UI::CCLCC::MapSystem::GetInstance();
   switch (type) {
     case 1:

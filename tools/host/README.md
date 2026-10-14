@@ -70,4 +70,39 @@ Stable text regions follow the logged mode: bottom ADV for mode 0, full-screen
 narration for mode 1 using the script's window position and line width.
 Structural checks do not establish OCR/translation or all-frame correctness;
 decoder comparisons do not establish equivalence with proprietary RAD output.
+
+## MO8 Save / Load interaction
+
+The save driver uses only public host input, tick and frame APIs. A JSON plan is
+an array of actions, for example:
+
+```json
+[["ticks",1200,true],["ticks",240],["capture","story"],
+ ["click",1819,1028],["ticks",120],["capture","system-menu"],["quit"]]
+```
+
+`ticks` optionally taps Return every ten ticks. `key` takes an SDL scancode,
+`click` takes SDL window coordinates (the driver requests 1920×1080), and
+an optional SDL mouse button (1 for left, 3 for right/cancel).
+`capture` writes an original-size PPM and lossless PNG using Python's standard
+library. `--interactive` reads one action per JSON line from a named pipe. Input
+actions and their tick positions are retained in `inputs.json` on shutdown.
+
+```sh
+python3 tools/host/mo8_save_load_test.py "$PWD/host-install" \
+  /absolute/writable /absolute/game /absolute/captures /absolute/plan.json
+python3 tools/host/mo8_save_inspect.py \
+  /absolute/writable/SAVEDATA_MO8.DAT.host-slots
+```
+
+The inspector independently checks payload CRC, slot ordering, entry sum/xor,
+thread bounds and thumbnail data. Repeat the driver in a new process with the
+same writable directory to test title Continue → Load after restart. Check the
+captured dialogue and restore logs against the saved checkpoint; disk presence
+alone does not establish successful restoration.
+
+The MO8 implementation stores 48 full and 48 quick entries in a versioned
+`.host-slots` sidecar with atomic replacement. The original game's compressed
+save container has not been reconstructed; original-game save interoperability
+is not supported.
 The source repository includes no proprietary assets, screenshots or baselines.
