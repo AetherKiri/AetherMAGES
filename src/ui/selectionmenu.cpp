@@ -4,6 +4,9 @@
 #include "../profile/dialogue.h"
 #include "../profile/game.h"
 #include "../renderer/renderer.h"
+#include "../log.h"
+
+#include <cstdlib>
 
 namespace Impacto {
 namespace UI {
@@ -14,6 +17,11 @@ using namespace Impacto::Profile::SelectionMenu;
 void SelectionMenu::ChoiceItemOnClick(Button* target) {
   SelectedChoiceId = target->Id;
   ChoiceMade = true;
+  if (std::getenv("IMPACTO_CHOICE_TRACE")) {
+    ImpLog(LogLevel::Warning, LogChannel::General,
+           "[choicetrace] selected={} count={}\n", SelectedChoiceId,
+           ChoiceCount);
+  }
 }
 
 void SelectionMenu::InitSelectionMenu(bool isPlain) {
@@ -135,6 +143,11 @@ void SelectionMenu::Show() {
   FadeAnimation.StartIn();
   State = Showing;
   Menu::Show();
+  if (std::getenv("IMPACTO_CHOICE_TRACE")) {
+    ImpLog(LogLevel::Warning, LogChannel::General,
+           "[choicetrace] show count={} focused={}\n", ChoiceCount,
+           CurrentlyFocusedElement != nullptr);
+  }
 }
 
 void SelectionMenu::Hide() {
