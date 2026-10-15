@@ -829,6 +829,11 @@ target_include_directories(clHCA PUBLIC vendor/clHCA)
 
 add_library(minilua STATIC vendor/minilua/minilua_impl.c)
 target_include_directories(minilua PUBLIC vendor)
+if(IOS)
+    # iOS does not implement system(); minilua has a LUA_USE_IOS guard that
+    # stubs it out, but it must be defined at compile time.
+    target_compile_definitions(minilua PRIVATE LUA_USE_IOS)
+endif()
 
 add_library(pcg STATIC vendor/pcg/src/pcg_basic.c)
 target_include_directories(pcg PUBLIC vendor/pcg/include)
@@ -1335,10 +1340,25 @@ if(ANDROID)
     target_link_options(impacto PRIVATE "LINKER:--build-id=sha1")
 elseif(IMPACTO_BUILD_HOST)
     if(IMPACTO_EMBEDDED)
-        # Embedded into the Aether host build: a static library links directly
-        # into the Godot extension shared object, avoiding a separate
-        # libimpacto_host.so that the host packaging would have to stage.
-        add_library(impacto STATIC ${Impacto_Src} ${Impacto_Header})
+        if(APPLE AND NOT IOS)
+            # On macOS, the Godot extension already links SDL2 (static) for the
+            # other runtimes. impacto links SDL3 (also static from vcpkg's
+            # arm64-osx triplet). SDL2 and SDL3 export many symbols with the
+            # same names (SDL_ClearError, SDL_hid_*, etc.), so linking both
+            # static archives into the same .dylib triggers duplicate-symbol
+            # errors. Build impacto as a separate SHARED library so SDL3's
+            # symbols are isolated in their own Mach-O image, and stage the
+            # resulting .dylib alongside the Godot extension.
+            add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
+            set_target_properties(impacto PROPERTIES
+                OUTPUT_NAME "impacto_host"
+                INSTALL_NAME_DIR "@rpath"
+                BUILD_WITH_INSTALL_NAME_DIR TRUE)
+        else()
+            # Linux/Android/iOS: static is safe (Linux/Android use shared SDL
+            # libraries so no duplicate-symbol clash; iOS does not link SDL2).
+            add_library(impacto STATIC ${Impacto_Src} ${Impacto_Header})
+        endif()
     else()
         add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
         set_target_properties(impacto PROPERTIES OUTPUT_NAME "impacto_host")
