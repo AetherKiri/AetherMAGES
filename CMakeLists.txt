@@ -1391,6 +1391,14 @@ if (APPLE)
     )
 endif()
 
+if(IOS)
+    # toml11's std::filesystem overloads are unavailable on iOS deployment
+    # targets below 13.0 (the extern-template declarations in parser.hpp
+    # fail to compile even when unused). The mages runtime parses userconfig
+    # from a string, so the filesystem overloads are not needed.
+    target_compile_definitions(impacto PRIVATE TOML11_DISABLE_STD_FILESYSTEM)
+endif()
+
 set_property(TARGET impacto PROPERTY COMPILE_WARNING_AS_ERROR ON)
 
 if(MSVC)

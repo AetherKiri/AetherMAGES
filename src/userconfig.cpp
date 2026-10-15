@@ -195,8 +195,13 @@ void Configure() {
   std::string fileContents;
   {
     if (UserConfigPath.empty()) {
-      std::filesystem::path configDir = Io::GetPlatformConfigDir();
-      UserConfigPath = (configDir / fileName).string();
+      // std::filesystem is unavailable on iOS deployment targets below 13.0;
+      // GetPlatformConfigDir already returns a normalized directory string.
+      std::string configDir = Io::GetPlatformConfigDir();
+      if (configDir.empty() || configDir.back() != '/') {
+        configDir += '/';
+      }
+      UserConfigPath = configDir + fileName;
     }
     const IoError existsResult = Io::PathExists(UserConfigPath);
     if (existsResult == IoError_Fail) {
