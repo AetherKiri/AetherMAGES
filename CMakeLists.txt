@@ -8,7 +8,11 @@ if (POLICY CMP0174)
   cmake_policy(SET CMP0174 NEW)
 endif()
 
-if(APPLE)
+if(APPLE AND NOT IMPACTO_EMBEDDED)
+    # Standalone builds target macOS/iOS 11.0. When embedded into a host
+    # project (Aether), inherit the host's CMAKE_OSX_DEPLOYMENT_TARGET
+    # instead: overriding it here would downgrade every impacto compilation
+    # and make std::filesystem & friends "unavailable" on iOS 13+ features.
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
 endif()
 
