@@ -1436,7 +1436,7 @@ target_include_directories(impacto SYSTEM BEFORE PRIVATE ${Impacto_Include_Dirs}
 target_include_directories(impacto PRIVATE ${PROJECT_BINARY_DIR}/include)
 
 target_precompile_headers(impacto PRIVATE
-    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/src/pch.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/pch.h>"
 )
 
 # binary install
