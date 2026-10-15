@@ -952,15 +952,17 @@ list(APPEND Impacto_Include_Dirs ${CMAKE_CURRENT_SOURCE_DIR}/vendor/include)
 if (NOT DEFINED IMPACTO_DISABLE_OPENGL)
     list(APPEND Impacto_Include_Dirs ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glad/include)
 
-    if (ANDROID OR NX)
+    if (ANDROID OR NX OR IOS)
         set(OpenGL_Libs
             OpenGL::GLES3
-            OpenGL::EGL
         )
         set(OpenGL_Components
             GLES3
-            EGL
         )
+        if(NOT IOS)
+            list(APPEND OpenGL_Libs OpenGL::EGL)
+            list(APPEND OpenGL_Components EGL)
+        endif()
     else()
         set(OpenGL_Libs
             OpenGL::GL
