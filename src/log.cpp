@@ -142,13 +142,14 @@ void LogInit() {
 
 std::string GetDefaultLogFile() {
   constexpr std::string_view logFileName = "Impacto_Log.txt";
-  std::filesystem::path result;
 #if defined(__SWITCH__)
   return std::string(logFileName);
 #elif defined(__ANDROID__)
-  result = Io::GetAndroidChosenDir();
-  return (result / logFileName).string();
+  std::string result = Io::GetAndroidChosenDir();
+  return (std::filesystem::path(result) / logFileName).string();
 #else
+  // std::filesystem is unavailable on iOS deployment targets below 13.0;
+  // keep the path plain so the file compiles on every Apple target.
   char* prefPath = SDL_GetPrefPath("Committee of Zero", "Impacto");
   if (!prefPath || *prefPath == '\0') {
     ImpLog(LogLevel::Error, LogChannel::IO,
@@ -156,11 +157,13 @@ std::string GetDefaultLogFile() {
            SDL_GetError());
     if (prefPath) SDL_free(prefPath);
     return {};
-  } else {
-    result = std::filesystem::path(prefPath);
-    SDL_free(prefPath);
   }
-  return (result / logFileName).string();
+  std::string result = prefPath;
+  SDL_free(prefPath);
+  if (result.empty() || result.back() != '/') {
+    result += '/';
+  }
+  return result + std::string(logFileName);
 #endif
 }
 
