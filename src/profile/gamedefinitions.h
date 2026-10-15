@@ -15,6 +15,11 @@ struct GameDefinition {
   bool Hidden = false;
   int LauncherOrderId = 99;
   uint32_t LauncherTheme = 0xFFFFFF;
+  // The game's profile mounts its archives from the game root itself
+  // (PC digital-distribution layout: script.mpk/system.mpk at the root)
+  // instead of the standard <gamedata>/<game-id>/ install layout. Used by
+  // the host bridge's "auto" game resolution.
+  bool PcFlatLayout = false;
 
   static void Configure();
 };

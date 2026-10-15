@@ -57,6 +57,8 @@ root.GameDefinitions = {
     Hidden = true,
     Name = "Memories Off -Innocent Fille-",
     LauncherOrderId = 9,
+    -- Steam/PC layout: script.mpk/system.mpk/... directly in the game root.
+    PcFlatLayout = true,
     GameProfile = root.BasePaths.RootProfilesDir .. "/mo8/game.lua",
   },
   ["modelviewer-dash"] = {

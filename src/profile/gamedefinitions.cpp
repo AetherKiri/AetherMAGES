@@ -16,6 +16,7 @@ struct TryGetImpl<GameDefinition> {
     auto launcherOrderId = TryGetMember<int>("LauncherOrderId").value_or(99);
     auto launcherTheme =
         TryGetMember<uint32_t>("LauncherTheme").value_or(0xFFFFFF);
+    auto pcFlatLayout = TryGetMember<bool>("PcFlatLayout").value_or(false);
 
     if (!gameProfileOpt || gameProfileOpt->empty()) {
       ImpLog(LogLevel::Fatal, LogChannel::Profile,
@@ -29,6 +30,7 @@ struct TryGetImpl<GameDefinition> {
         .Hidden = hidden,
         .LauncherOrderId = launcherOrderId,
         .LauncherTheme = launcherTheme,
+        .PcFlatLayout = pcFlatLayout,
     };
   }
 };

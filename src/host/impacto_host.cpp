@@ -266,6 +266,17 @@ static std::optional<std::string> DetectGameId(
     if (!HasScriptOrSystemArchive(gameDir)) continue;
     candidates.push_back({id, definition.LauncherOrderId});
   }
+  if (candidates.empty()) {
+    // PC digital-distribution layout: the script.*/system.* archives sit
+    // directly in the game root. Only registry games whose profile mounts
+    // that layout (PcFlatLayout) are candidates.
+    if (!HasScriptOrSystemArchive(gamedataDir)) return std::nullopt;
+    for (auto const& [id, definition] :
+         Impacto::Profile::GameDefinitions) {
+      if (!definition.PcFlatLayout) continue;
+      candidates.push_back({id, definition.LauncherOrderId});
+    }
+  }
   if (candidates.empty()) return std::nullopt;
   std::sort(candidates.begin(), candidates.end(),
             [](Candidate const& a, Candidate const& b) {
