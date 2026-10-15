@@ -971,7 +971,19 @@ if (NOT DEFINED IMPACTO_DISABLE_OPENGL)
             OpenGL
         )
     endif ()
-    find_package(OpenGL COMPONENTS ${OpenGL_Components})
+    if(IOS)
+        # CMake's FindOpenGL module cannot locate the iOS OpenGLES.framework.
+        # Create the imported target manually so the rest of the build (which
+        # references OpenGL::GLES3 uniformly) links correctly. glad provides
+        # the GLES3 function declarations, so only the framework link is needed.
+        if(NOT TARGET OpenGL::GLES3)
+            add_library(OpenGL::GLES3 INTERFACE IMPORTED)
+            set_target_properties(OpenGL::GLES3 PROPERTIES
+                INTERFACE_LINK_LIBRARIES "-framework OpenGLES")
+        endif()
+    else()
+        find_package(OpenGL COMPONENTS ${OpenGL_Components})
+    endif()
     list(APPEND Impacto_Libs
         ${OpenGL_Libs}
     )
