@@ -1320,8 +1320,15 @@ if(ANDROID)
     add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
     target_link_options(impacto PRIVATE "LINKER:--build-id=sha1")
 elseif(IMPACTO_BUILD_HOST)
-    add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
-    set_target_properties(impacto PROPERTIES OUTPUT_NAME "impacto_host")
+    if(IMPACTO_EMBEDDED)
+        # Embedded into the Aether host build: a static library links directly
+        # into the Godot extension shared object, avoiding a separate
+        # libimpacto_host.so that the host packaging would have to stage.
+        add_library(impacto STATIC ${Impacto_Src} ${Impacto_Header})
+    else()
+        add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
+        set_target_properties(impacto PROPERTIES OUTPUT_NAME "impacto_host")
+    endif()
 elseif(APPLE)
     add_executable(impacto MACOSX_BUNDLE ${Impacto_Src} ${Impacto_Header})
 else()
@@ -1330,7 +1337,7 @@ endif()
 
 if (APPLE)
     set(MACOSX_BUNDLE_ICON_FILE icon.icns)
-    set(APP_ICON_MACOS "${CMAKE_SOURCE_DIR}/resources/common/icons/icon.icns")
+    set(APP_ICON_MACOS "${CMAKE_CURRENT_SOURCE_DIR}/resources/common/icons/icon.icns")
     set_source_files_properties(${APP_ICON_MACOS} PROPERTIES
             MACOSX_PACKAGE_LOCATION "Resources"
     )
