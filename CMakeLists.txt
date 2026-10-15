@@ -25,6 +25,9 @@ find_package(PkgConfig)
 option(IMPACTO_BUILD_HOST
     "Build the embedded host bridge shared library (libimpacto_host) for the Aether shell instead of the standalone executable"
     OFF)
+option(IMPACTO_EMBEDDED
+    "Configure for embedding into a host build (Aether): no install rules; the host build stages the data tree itself"
+    OFF)
 
 if (IMPACTO_BUILD_HOST)
     # Host bridge: offscreen GL rendering + FIFO audio bridge, no interactive
@@ -1438,7 +1441,10 @@ target_precompile_headers(impacto PRIVATE
 
 # binary install
 
-if (ANDROID)
+if (IMPACTO_EMBEDDED)
+    # Embedded builds (Aether host) never install: the consuming build owns
+    # staging the library, its dependencies and the engine data tree.
+elseif (ANDROID)
     install(TARGETS impacto LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/android/app/src/main/jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 elseif (NX)
     find_program(ELF2NRO elf2nro HINTS "$ENV{DEVKITPRO}/tools/bin")
@@ -1554,7 +1560,9 @@ endif ()
 
 # asset install
 
-if (NOT ANDROID)
+if (IMPACTO_EMBEDDED)
+    # No install rules when embedded; see the comment at the binary install.
+elseif (NOT ANDROID)
     if(NOT APPLE)
         install(DIRECTORY src/shaders DESTINATION .)
         install(DIRECTORY resources DESTINATION .)
