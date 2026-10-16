@@ -7,7 +7,6 @@
 #include "log.h"
 #include "inputsystem.h"
 #include "debugmenu.h"
-#include "renderer/opengl/glc.h"
 
 #ifndef IMPACTO_DISABLE_IMGUI
 #include "overlay.h"
@@ -204,6 +203,10 @@ void InitGameProfile() {
 }
 
 void Shutdown() {
+#ifdef IMPACTO_HOST_GPU
+  // No loader may still write into a scene when its renderables are released.
+  WorkQueue::StopWorkQueue();
+#endif
   if (+Profile::Game::GameFeatures & +GameFeature::Audio) {
     Audio::AudioShutdown();
   }
@@ -215,7 +218,9 @@ void Shutdown() {
   if (+Profile::Game::GameFeatures & +GameFeature::Renderer2D) {
     Renderer->Shutdown();
   }
+#ifndef IMPACTO_HOST_GPU
   WorkQueue::StopWorkQueue();
+#endif
   Window->Shutdown();
 }
 

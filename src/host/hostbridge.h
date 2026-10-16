@@ -23,6 +23,9 @@ class HostBridge {
   // Engine thread only.
   void PublishFrame(std::vector<uint8_t>&& pixels, uint32_t width,
                     uint32_t height);
+  void PublishGpuFrame(uint64_t texture, uint32_t width, uint32_t height);
+  bool GetGpuFrame(uint64_t& texture, uint32_t& width, uint32_t& height,
+                    uint64_t& serial) const;
   void SetRendererInfo(std::string const& info);
   void SetEngineThreadError(std::string const& error);
 
@@ -42,6 +45,7 @@ class HostBridge {
   uint32_t FrameWidth = 0;
   uint32_t FrameHeight = 0;
   uint64_t Serial = 0;
+  uint64_t FrameTexture = 0;
   std::string RendererInfo;
   std::string LastError;
 };

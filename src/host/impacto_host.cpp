@@ -1,4 +1,6 @@
 #include "impacto_host.h"
+#include "impacto_host_gpu.h"
+#include "gameroot.h"
 
 #include "hostbridge.h"
 
@@ -10,6 +12,9 @@
 #include "../audio/host/hostaudiobridge.h"
 #include "../renderer/renderer.h"
 #include "../renderer/window.h"
+#ifdef IMPACTO_HOST_GPU
+#include "../renderer/host/renderer.h"
+#endif
 
 #ifndef IMPACTO_DISABLE_OPENGL
 #include <glad/glad.h>
@@ -24,6 +29,7 @@
 #include <optional>
 #include <atomic>
 #include <condition_variable>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -126,6 +132,9 @@ struct HostState {
   std::atomic<bool> ShouldQuit{false};
   std::atomic<uint32_t> PendingWidth{0};
   std::atomic<uint32_t> PendingHeight{0};
+#ifdef IMPACTO_HOST_GPU
+  void (*PumpGpu)() = nullptr;
+#endif
 };
 
 std::mutex g_InstanceMutex;
@@ -143,10 +152,18 @@ ImpactoHostResult PostCommand(HostState* st, std::function<ImpactoHostResult()> 
     st->Queue.push_back(std::move(cmd));
   }
   st->QueueCV.notify_one();
+#ifdef IMPACTO_HOST_GPU
+  while (future.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+    if (st->PumpGpu) st->PumpGpu();
+  }
+#endif
   return future.get();
 }
 
 void EngineLoop(HostState* st) {
+#ifdef IMPACTO_HOST_GPU
+  Impacto::Host::Gpu = {};
+#endif
   st->EngineAlive.store(true);
   while (true) {
     HostState::Command cmd;
@@ -160,6 +177,9 @@ void EngineLoop(HostState* st) {
     }
 
     ImpactoHostResult result = IMPACTO_HOST_OK;
+#ifdef IMPACTO_HOST_GPU
+    uint64_t batch = Impacto::Host::Gpu.begin_batch ? Impacto::Host::Gpu.begin_batch() : 0;
+#endif
     try {
       result = cmd.Fn();
     } catch (std::exception const& e) {
@@ -172,6 +192,12 @@ void EngineLoop(HostState* st) {
           "unknown engine exception");
       result = IMPACTO_HOST_INTERNAL_ERROR;
     }
+#ifdef IMPACTO_HOST_GPU
+    if (batch && Impacto::Host::Gpu.end_batch && !Impacto::Host::Gpu.end_batch(batch)) {
+      Impacto::Host::HostBridge::Get().SetEngineThreadError("Host GPU batch submission failed");
+      result = IMPACTO_HOST_INTERNAL_ERROR;
+    }
+#endif
     cmd.Done.set_value(result);
   }
   st->EngineAlive.store(false);
@@ -187,15 +213,15 @@ std::string EscapeLuaString(std::string const& value) {
   return out;
 }
 
-#ifndef IMPACTO_DISABLE_OPENGL
-
-// Read the render target the engine just drew into and publish it as a
-// top-down RGBA8888 frame. Must run on the engine thread (GL context owner).
-// This only *reads* backend state; no backend code is modified.
+#if defined(IMPACTO_HOST_GPU) || !defined(IMPACTO_DISABLE_OPENGL)
+// Publish the render target on the engine thread. Embedded builds keep it on
+// the host GPU; the standalone OpenGL host captures top-down RGBA8888 pixels.
 void CaptureFrame() {
   using namespace Impacto;
   if (Window == nullptr || Renderer == nullptr) return;
-
+#ifdef IMPACTO_HOST_GPU
+  static_cast<Host::Renderer*>(Renderer)->Present();
+#else
   auto* glWindow = static_cast<OpenGL::GLWindow*>(Window);
   if (glWindow->DrawRT == 0 || glWindow->GLContext == nullptr) return;
 
@@ -224,80 +250,12 @@ void CaptureFrame() {
   Host::HostBridge::Get().PublishFrame(std::move(flipped),
                                         static_cast<uint32_t>(width),
                                         static_cast<uint32_t>(height));
+#endif
 }
 
 ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
                              std::string gameId, std::string gamedataDir);
 void TeardownEngine(HostState* st);
-
-// Every shipped MAGES. profile mounts its archives from
-// <gamedata>/<game-id>/ with a script.* or system.* archive at the root of
-// that subdirectory. Candidates are taken from the gamedefinitions.lua
-// registry so an unrecognised directory never wins; ties resolve by the
-// definition's launcher order (then id) to stay deterministic.
-static bool HasScriptOrSystemArchive(const std::filesystem::path& gameDir) {
-  std::error_code ec;
-  std::filesystem::directory_iterator it(gameDir, ec);
-  if (ec) return false;
-  for (auto const& entry : it) {
-    std::error_code entryEc;
-    if (!entry.is_regular_file(entryEc) || entryEc) continue;
-    std::string name = entry.path().filename().string();
-    std::transform(name.begin(), name.end(), name.begin(),
-                   [](unsigned char c) { return (char)std::tolower(c); });
-    if (name.rfind("script.", 0) == 0 || name.rfind("system.", 0) == 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static std::optional<std::string> DetectGameId(
-    const std::filesystem::path& gamedataDir) {
-  struct Candidate {
-    std::string id;
-    int launcherOrderId;
-  };
-  std::vector<Candidate> candidates;
-  std::error_code ec;
-  for (auto const& [id, definition] : Impacto::Profile::GameDefinitions) {
-    const std::filesystem::path gameDir = gamedataDir / id;
-    if (!std::filesystem::is_directory(gameDir, ec)) continue;
-    if (!HasScriptOrSystemArchive(gameDir)) continue;
-    candidates.push_back({id, definition.LauncherOrderId});
-  }
-  if (candidates.empty()) {
-    // PC digital-distribution layout: the script.*/system.* archives sit
-    // directly in the game root. Only registry games whose profile mounts
-    // that layout (PcFlatLayout) are candidates.
-    if (!HasScriptOrSystemArchive(gamedataDir)) return std::nullopt;
-    for (auto const& [id, definition] :
-         Impacto::Profile::GameDefinitions) {
-      if (!definition.PcFlatLayout) continue;
-      candidates.push_back({id, definition.LauncherOrderId});
-    }
-  }
-  if (candidates.empty()) return std::nullopt;
-  std::sort(candidates.begin(), candidates.end(),
-            [](Candidate const& a, Candidate const& b) {
-              if (a.launcherOrderId != b.launcherOrderId) {
-                return a.launcherOrderId < b.launcherOrderId;
-              }
-              return a.id < b.id;
-            });
-  if (candidates.size() > 1) {
-    std::string others;
-    for (size_t i = 1; i < candidates.size(); ++i) {
-      if (i > 1) others += ", ";
-      others += candidates[i].id;
-    }
-    ImpLog(Impacto::LogLevel::Warning, Impacto::LogChannel::General,
-           "Host bridge: multiple MAGES. games found in game root; using "
-           "\"{:s}\" (also present: {:s})\n",
-           candidates.front().id, others);
-  }
-  return candidates.front().id;
-}
 
 ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
                              std::string gameId, std::string gamedataDir) {
@@ -305,6 +263,12 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
   if (st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
 
   Host::HostBridge::Get().Reset();
+  Host::ArchiveRoot.clear();
+  Host::ProfileArchiveRoot.clear();
+  UserConfig::SetActiveGame("");
+  Profile::Game::HasInit = false;
+  Profile::Game::GameFeatures = static_cast<GameFeature>(0);
+  Game::ShouldQuit = false;
 
   // Game selection: "launcher" boots the engine without an active game (an
   // empty frame per tick, the no-game-data smoke path); "auto" (or an empty
@@ -318,6 +282,7 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
   std::filesystem::path dataDir =
       std::filesystem::absolute(st->DataDir, ec);
   if (ec) return IMPACTO_HOST_IO_ERROR;
+  Host::EngineDataRoot = dataDir;
   std::filesystem::path gameRootPath =
       std::filesystem::absolute(gameRoot, ec);
   if (ec) return IMPACTO_HOST_IO_ERROR;
@@ -374,9 +339,11 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
   // initialisation, restore the previous setting afterwards so other SDL users
   // in this process are unaffected. The hint (not the environment) is the
   // modern SDL3 way and is scoped to this process' SDL state.
+#ifndef IMPACTO_HOST_GPU
   const char* oldDriverHint = SDL_GetHint(SDL_HINT_VIDEO_DRIVER);
   SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "offscreen",
                           SDL_HINT_OVERRIDE);
+#endif
 
   ImpactoHostResult result = IMPACTO_HOST_OK;
   try {
@@ -398,26 +365,33 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
     // undetected root fails without a teardown-worthy half-boot.
     if (!launcherMode) {
       if (autoDetect) {
-        auto detected = DetectGameId(gamedataPath);
+        auto detected = Host::DetectGameRoot(gamedataPath);
         if (!detected) {
           throw std::runtime_error(
               "no MAGES. game data found in \"" + gamedataPath.string() +
-              "\" (expected a <game-id>/script.* subdirectory of a game "
-              "registered in gamedefinitions.lua)");
+               "\" (expected archives for a supported MAGES. profile)");
         }
-        gameId = *detected;
+        gameId = detected->Id;
+        Host::ArchiveRoot = detected->Archives;
+        Host::ProfileArchiveRoot = Profile::GameDefinitions.at(gameId).PcFlatLayout
+            ? gamedataPath : gamedataPath / gameId;
         ImpLog(LogLevel::Info, LogChannel::General,
                "Host bridge: auto-detected game \"{:s}\"\n", gameId);
       } else if (!Profile::GameDefinitions.contains(gameId)) {
         throw std::runtime_error("game id \"" + gameId +
                                  "\" is not registered in "
-                                 "gamedefinitions.lua");
+                                  "gamedefinitions.lua");
+      } else if (auto detected = Host::DetectGameRoot(gamedataPath);
+                 detected && detected->Id == gameId) {
+        Host::ArchiveRoot = detected->Archives;
+        Host::ProfileArchiveRoot = Profile::GameDefinitions.at(gameId).PcFlatLayout
+            ? gamedataPath : gamedataPath / gameId;
       }
       UserConfig::SetActiveGame(gameId);
     }
 
-    // Force the embedded configuration: software-friendly OpenGL renderer,
-    // audio routed into the host FIFO bridge instead of a device backend.
+    // Embedded builds select the host renderer at compile time; audio goes
+    // into the host FIFO bridge instead of a device backend.
     UserConfig::AdvancedSettings.ActiveRenderer = RendererType::OpenGL;
     UserConfig::AdvancedSettings.ActiveAudioBackend =
         AudioBackendType::Host;
@@ -458,8 +432,10 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
     result = IMPACTO_HOST_INTERNAL_ERROR;
   }
 
+#ifndef IMPACTO_HOST_GPU
   SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, oldDriverHint,
                           SDL_HINT_OVERRIDE);
+#endif
   std::error_code restoreEc;
   std::filesystem::current_path(oldCwd, restoreEc);
 
@@ -467,12 +443,18 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
     // The engine half-initialised: it already owns the window, GL context
     // and worker threads. Tear them down so a failed open does not leave
     // joinable globals that would terminate() at process exit.
+    auto error = Host::HostBridge::Get().GetLastError();
     TeardownEngine(st);
+    Host::HostBridge::Get().SetEngineThreadError(error);
     return result;
   }
 
   Host::HostBridge::Get().SetRendererInfo(fmt::format(
+#ifdef IMPACTO_HOST_GPU
+      "Godot GPU host renderer, {:d}x{:d}", width, height));
+#else
       "OpenGL (offscreen, llvmpipe-safe), {:d}x{:d}", width, height));
+#endif
 
   // Produce a first frame so the host can present immediately.
   if (UserConfig::GetActiveGame().empty()) {
@@ -551,7 +533,13 @@ void TeardownEngine(HostState* st) {
   } catch (...) {
   }
   if (realWindow != nullptr) Window = realWindow;
-
+#ifdef IMPACTO_HOST_GPU
+  delete Renderer;
+  Renderer = nullptr;
+  delete Window;
+  Window = nullptr;
+  Host::HostBridge::Get().Reset();
+#else
   if (Window != nullptr) {
     auto* glWindow = static_cast<OpenGL::GLWindow*>(Window);
     if (glWindow->GLContext != nullptr) {
@@ -572,7 +560,8 @@ void TeardownEngine(HostState* st) {
     delete static_cast<OpenGL::Renderer*>(Renderer);
     Renderer = nullptr;
   }
-  SDL_Quit();;
+#endif
+  SDL_Quit();
 
   Audio::HostAudioBridge::Get().Reset();
   st->GameOpened.store(false);
@@ -611,7 +600,7 @@ int32_t impacto_host_create(const impacto_host_desc_t* desc, void** out_host) {
   if (desc->initial_width == 0 || desc->initial_height == 0) {
     return IMPACTO_HOST_INVALID_ARGUMENT;
   }
-#ifdef IMPACTO_DISABLE_OPENGL
+#if defined(IMPACTO_DISABLE_OPENGL) && !defined(IMPACTO_HOST_GPU)
   return IMPACTO_HOST_NOT_SUPPORTED;
 #endif
   std::lock_guard<std::mutex> instanceLock(g_InstanceMutex);
@@ -687,7 +676,7 @@ void impacto_host_destroy(void* host) {
   }
 
   // Shut the engine down on its own thread, then stop the loop.
-#ifndef IMPACTO_DISABLE_OPENGL
+#if defined(IMPACTO_HOST_GPU) || !defined(IMPACTO_DISABLE_OPENGL)
   PostCommand(st, [st] { return DoDestroy(st); });
 #endif
   {
@@ -711,7 +700,7 @@ int32_t impacto_host_open_game(void* host, const char* game_root_utf8,
   std::string gameId = game_id_utf8 ? game_id_utf8 : "";
   std::string gamedataDir = gamedata_dir_utf8 ? gamedata_dir_utf8 : "";
 
-#ifdef IMPACTO_DISABLE_OPENGL
+#if defined(IMPACTO_DISABLE_OPENGL) && !defined(IMPACTO_HOST_GPU)
   (void)gameRoot;
   (void)gameId;
   (void)gamedataDir;
@@ -726,7 +715,7 @@ int32_t impacto_host_open_game(void* host, const char* game_root_utf8,
 int32_t impacto_host_tick(void* host, uint32_t delta_ms) {
   HostState* st = HostFromVoid(host);
   if (st == nullptr) return IMPACTO_HOST_INVALID_ARGUMENT;
-#ifdef IMPACTO_DISABLE_OPENGL
+#if defined(IMPACTO_DISABLE_OPENGL) && !defined(IMPACTO_HOST_GPU)
   (void)delta_ms;
   return IMPACTO_HOST_NOT_SUPPORTED;
 #else
@@ -768,7 +757,7 @@ int32_t impacto_host_read_frame_rgba(void* host, void* out_pixels,
     return IMPACTO_HOST_INVALID_ARGUMENT;
   }
   if (!st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
-#ifndef IMPACTO_DISABLE_OPENGL
+#if defined(IMPACTO_HOST_GPU) || !defined(IMPACTO_DISABLE_OPENGL)
   if (st->RenderInterval > 1) {
     auto result = PostCommand(st, [st] {
       if (st->RenderPending) RenderAndCapture(st);
@@ -777,11 +766,54 @@ int32_t impacto_host_read_frame_rgba(void* host, void* out_pixels,
     if (result != IMPACTO_HOST_OK) return result;
   }
 #endif
+#ifdef IMPACTO_HOST_GPU
+  uint64_t texture = 0, serial = 0;
+  uint32_t width = 0, height = 0;
+  if (!Impacto::Host::HostBridge::Get().GetGpuFrame(texture, width, height, serial))
+    return IMPACTO_HOST_INVALID_STATE;
+  return Impacto::Host::Gpu.read_rgba &&
+      Impacto::Host::Gpu.read_rgba(texture, out_pixels, out_pixels_size, width * 4)
+      ? IMPACTO_HOST_OK : IMPACTO_HOST_NOT_SUPPORTED;
+#else
   if (!Impacto::Host::HostBridge::Get().CopyFrame(out_pixels,
                                                   out_pixels_size)) {
     return IMPACTO_HOST_INVALID_STATE;
   }
   return IMPACTO_HOST_OK;
+#endif
+}
+
+int32_t impacto_host_set_gpu_callbacks(void* host, const impacto_host_gpu_callbacks_t* callbacks) {
+  auto* st = HostFromVoid(host);
+  if (!st || !callbacks || callbacks->struct_size < sizeof(*callbacks) ||
+      callbacks->api_version != IMPACTO_HOST_GPU_API_VERSION ||
+      !callbacks->create_rgba || !callbacks->release_texture ||
+      !callbacks->update_rgba || !callbacks->clear_rgba ||
+      !callbacks->copy_rgba || !callbacks->draw ||
+      (bool(callbacks->begin_batch) != bool(callbacks->end_batch)))
+    return IMPACTO_HOST_INVALID_ARGUMENT;
+  if (st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
+#ifdef IMPACTO_HOST_GPU
+  // The caller services allocations while the engine thread installs the
+  // table. Keep its pump separate from engine-only state, and never reuse a
+  // previous host instance's callbacks while waiting for registration.
+  st->PumpGpu = callbacks->pump;
+  return PostCommand(st, [callbacks] {
+    Impacto::Host::Gpu = *callbacks;
+    return IMPACTO_HOST_OK;
+  });
+#else
+  return IMPACTO_HOST_NOT_SUPPORTED;
+#endif
+}
+
+int32_t impacto_host_get_gpu_frame(void* host, uint64_t* texture, uint32_t* width,
+                                   uint32_t* height, uint64_t* serial) {
+  auto* st = HostFromVoid(host);
+  if (!st || !texture || !width || !height || !serial) return IMPACTO_HOST_INVALID_ARGUMENT;
+  if (!st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
+  return Impacto::Host::HostBridge::Get().GetGpuFrame(*texture, *width, *height, *serial)
+      ? IMPACTO_HOST_OK : IMPACTO_HOST_NOT_SUPPORTED;
 }
 
 int32_t impacto_host_get_audio_format(void* host, uint32_t* out_sample_rate,

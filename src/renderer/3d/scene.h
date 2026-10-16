@@ -9,6 +9,7 @@ namespace Impacto {
 
 class IScene3D {
  public:
+  virtual ~IScene3D() = default;
   virtual void Init() = 0;
   virtual void Shutdown() = 0;
   virtual void Update(float dt) = 0;

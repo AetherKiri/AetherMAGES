@@ -1,6 +1,9 @@
 #include "vfs.h"
 #include "profile_internal.h"
 #include "../io/vfs.h"
+#ifdef IMPACTO_HOST_GPU
+#include "../host/gameroot.h"
+#endif
 
 namespace Impacto {
 namespace Profile {
@@ -13,6 +16,9 @@ void Configure() {
     ForEachProfileTable<std::string>([](std::string const& name) {
       ForEachProfileArray([&name](size_t index) {
         std::string file(EnsureGetArrayElement<std::string>());
+#ifdef IMPACTO_HOST_GPU
+        file = Host::ResolveArchivePath(file);
+#endif
         Io::VfsMount(name, file);
       });
     });

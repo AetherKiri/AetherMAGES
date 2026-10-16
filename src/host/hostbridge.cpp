@@ -16,6 +16,7 @@ void HostBridge::Reset() {
   FrameWidth = 0;
   FrameHeight = 0;
   Serial = 0;
+  FrameTexture = 0;
   RendererInfo.clear();
   LastError.clear();
 }
@@ -32,6 +33,21 @@ void HostBridge::PublishFrame(std::vector<uint8_t>&& pixels, uint32_t width,
 void HostBridge::SetRendererInfo(std::string const& info) {
   std::lock_guard<std::mutex> lock(Mutex);
   RendererInfo = info;
+}
+
+void HostBridge::PublishGpuFrame(uint64_t texture, uint32_t width, uint32_t height) {
+  std::lock_guard<std::mutex> lock(Mutex);
+  FrameTexture = texture;
+  FrameWidth = width;
+  FrameHeight = height;
+  ++Serial;
+}
+
+bool HostBridge::GetGpuFrame(uint64_t& texture, uint32_t& width,
+                            uint32_t& height, uint64_t& serial) const {
+  std::lock_guard<std::mutex> lock(Mutex);
+  texture = FrameTexture; width = FrameWidth; height = FrameHeight; serial = Serial;
+  return texture != 0 && serial != 0;
 }
 
 void HostBridge::SetEngineThreadError(std::string const& error) {

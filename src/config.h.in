@@ -1,4 +1,5 @@
 #pragma once
+#cmakedefine IMPACTO_HOST_GPU
 
 #cmakedefine01 IMPACTO_ENABLE_SLOW_LOG
 #cmakedefine01 IMPACTO_GL_DEBUG

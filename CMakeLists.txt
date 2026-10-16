@@ -34,8 +34,8 @@ option(IMPACTO_EMBEDDED
     OFF)
 
 if (IMPACTO_BUILD_HOST)
-    # Host bridge: offscreen GL rendering + FIFO audio bridge, no interactive
-    # backends.
+    # Host bridge: host GPU commands when embedded, offscreen GL otherwise,
+    # with FIFO audio and no interactive backends.
     set(IMPACTO_DISABLE_VULKAN ON)
     set(IMPACTO_DISABLE_DX9 ON)
     set(IMPACTO_DISABLE_IMGUI ON)
@@ -43,6 +43,11 @@ if (IMPACTO_BUILD_HOST)
     # The bridge is a shared library, so everything linked into it (including
     # the vendored static libraries) must be position independent.
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    if (IMPACTO_EMBEDDED)
+        set(IMPACTO_HOST_GPU ON)
+        set(IMPACTO_DISABLE_OPENGL ON)
+        include(cmake/HostShaders.cmake)
+    endif ()
 endif ()
 
 if (EMSCRIPTEN)
@@ -826,6 +831,9 @@ if (IMPACTO_BUILD_HOST)
     )
     # The host library replaces the standalone entry point.
     list(REMOVE_ITEM Impacto_Src src/main.cpp)
+    if (IMPACTO_HOST_GPU)
+        list(APPEND Impacto_Src src/renderer/host/renderer.cpp src/renderer/host/scene.cpp)
+    endif ()
 endif ()
 
 add_library(clHCA STATIC vendor/clHCA/clHCA.c)
@@ -1339,28 +1347,27 @@ endif ()
 
 configure_file(src/version.h.in ${PROJECT_BINARY_DIR}/include/version.h)
 
-if(ANDROID)
+if(ANDROID AND NOT IMPACTO_EMBEDDED)
     add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
     target_link_options(impacto PRIVATE "LINKER:--build-id=sha1")
 elseif(IMPACTO_BUILD_HOST)
     if(IMPACTO_EMBEDDED)
-        if(APPLE AND NOT IOS)
-            # On macOS, the Godot extension already links SDL2 (static) for the
-            # other runtimes. impacto links SDL3 (also static from vcpkg's
-            # arm64-osx triplet). SDL2 and SDL3 export many symbols with the
-            # same names (SDL_ClearError, SDL_hid_*, etc.), so linking both
-            # static archives into the same .dylib triggers duplicate-symbol
-            # errors. Build impacto as a separate SHARED library so SDL3's
-            # symbols are isolated in their own Mach-O image, and stage the
-            # resulting .dylib alongside the Godot extension.
+        if((APPLE AND NOT IOS) OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            # Isolate SDL3 from the host's SDL2. Mach-O needs separate images
+            # for static SDL archives; ELF needs separate images for the
+            # unversioned SDL2 and versioned SDL3 references as well.
             add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
             set_target_properties(impacto PROPERTIES
                 OUTPUT_NAME "impacto_host"
                 INSTALL_NAME_DIR "@rpath"
                 BUILD_WITH_INSTALL_NAME_DIR TRUE)
+            if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+                set_target_properties(impacto PROPERTIES
+                    BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+            endif()
         else()
-            # Linux/Android/iOS: static is safe (Linux/Android use shared SDL
-            # libraries so no duplicate-symbol clash; iOS does not link SDL2).
+            # The host packages the embedded engine into its extension. SDL
+            # isolation is handled by HostSdl.cmake and the iOS archive stage.
             add_library(impacto STATIC ${Impacto_Src} ${Impacto_Header})
         endif()
     else()
@@ -1371,6 +1378,10 @@ elseif(APPLE)
     add_executable(impacto MACOSX_BUNDLE ${Impacto_Src} ${Impacto_Header})
 else()
     add_executable(impacto ${Impacto_Src} ${Impacto_Header})
+endif()
+
+if (IMPACTO_EMBEDDED)
+    include(cmake/HostSdl.cmake)
 endif()
 
 if (APPLE)

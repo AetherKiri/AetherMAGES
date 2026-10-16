@@ -15,21 +15,20 @@ extern "C" {
  * the Aether shell:
  *
  *   - create        spawns the engine thread (cheap, nothing is initialised)
- *   - open_game     boots SDL (offscreen video driver), the OpenGL context,
- *                   the Lua profile system and the game itself. Runs on the
+ *   - open_game     boots the renderer, Lua profile system and game. Runs on the
  *                   engine thread and blocks until done.
  *   - tick          advances the simulation by delta_ms and renders one frame
- *                   into the frame readback surface.
+ *                   into the renderer's frame surface.
  *   - read_frame_rgba / get_frame_desc
  *                   copy the latest rendered frame (top-down RGBA8888).
  *   - read_audio_f32 / get_audio_format
  *                   drain the engine's mixed stereo float PCM FIFO.
  *   - send_*        inject input as SDL events (safe from any thread).
  *
- * Rendering is headless by construction: the SDL "offscreen" video driver is
- * selected for the context of engine initialisation and the final frame is
- * read back from the renderer's draw render target over the CPU, mirroring
- * the siglus_rs host integration.
+ * Embedded builds use impacto_host_gpu.h callbacks to render with the host's
+ * GPU and publish native textures. No SDL window or graphics context is made;
+ * CPU readback is available only for explicit screenshot requests. Standalone
+ * host builds may use the offscreen OpenGL backend.
  *
  * The engine state is process-global, so at most one host instance may exist
  * at a time; impacto_host_create fails while another instance is alive.

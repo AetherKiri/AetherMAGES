@@ -1,6 +1,9 @@
 #include "physicalfilestream.h"
 #include "../log.h"
 #include "io.h"
+#ifdef IMPACTO_HOST_GPU
+#include "../host/gameroot.h"
+#endif
 
 #include <cstring>
 #include <algorithm>
@@ -67,8 +70,19 @@ std::ios_base::openmode PhysicalFileStream::PrepareFileOpenMode(
 }
 
 IoError PhysicalFileStream::Create(std::string const& fileName, Stream** out,
-                                   CreateFlags flags) {
-  PhysicalFileStream* result = new PhysicalFileStream(fileName, flags);
+                                    CreateFlags flags) {
+  std::string resolved = fileName;
+#ifdef IMPACTO_HOST_GPU
+  // Lazy-loaded bundled resources must remain available after host startup
+  // restores the application's working directory.
+  const std::filesystem::path path(fileName);
+  if (!(flags & WRITE) && path.is_relative() && !path.empty() &&
+      !Host::EngineDataRoot.empty() &&
+      (*path.begin() == "resources" || *path.begin() == "shaders")) {
+    resolved = (Host::EngineDataRoot / path).string();
+  }
+#endif
+  PhysicalFileStream* result = new PhysicalFileStream(resolved, flags);
   if (auto err = result->ErrorCode; err != IoError_OK) {
     ImpLog(LogLevel::Error, LogChannel::IO, "Failed to open file \"{:s}\"\n",
            result->SourceFileName);

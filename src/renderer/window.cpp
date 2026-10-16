@@ -9,13 +9,21 @@
 #include <vector>
 #include <optional>
 #include "../inputsystem.h"
+#ifndef IMPACTO_DISABLE_OPENGL
 #include "opengl/window.h"
+#endif
 #include "vulkan/window.h"
 #include "dx9/window.h"
+#ifdef IMPACTO_HOST_GPU
+#include "host/window.h"
+#endif
 
 namespace Impacto {
 
 void InitWindow() {
+#ifdef IMPACTO_HOST_GPU
+  Window = new Host::HostWindow();
+#else
   switch (UserConfig::AdvancedSettings.ActiveRenderer) {
 #ifndef IMPACTO_DISABLE_OPENGL
     case RendererType::OpenGL:
@@ -38,11 +46,13 @@ void InitWindow() {
              "selected!\n");
       exit(1);
   }
+#endif
 
   Window->Init();
 }
 
 void SetWindowIcon(SDL_Window* window) {
+  if (!window) return;
   if (!Profile::Game::WindowIconPath.has_value()) {
     return;
   }
@@ -155,6 +165,11 @@ static SDL_Cursor* LoadCursorFromFile(const std::string& path) {
 }
 
 void InitCursors() {
+#ifdef IMPACTO_HOST_GPU
+  // The embedding application owns platform cursors and initializes no SDL
+  // video subsystem. Cursor assets and SDL video APIs belong to standalone.
+  return;
+#endif
   if (Profile::Game::CursorArrowPath.has_value()) {
     CursorArrow = LoadCursorFromFile(*Profile::Game::CursorArrowPath);
   }
@@ -313,6 +328,9 @@ RectF BaseWindow::GetViewport() {
 }
 
 RectF BaseWindow::GetLogicalViewport() {
+#ifdef IMPACTO_HOST_GPU
+  return GetViewport();
+#else
   RectF viewport;
   int lgcWindowWidth, lgcWindowHeight;
   SDL_GetWindowSize(SDLWindow, &lgcWindowWidth, &lgcWindowHeight);
@@ -324,6 +342,7 @@ RectF BaseWindow::GetLogicalViewport() {
   viewport.X = ((float)lgcWindowWidth - viewport.Width) / 2.0f;
   viewport.Y = ((float)lgcWindowHeight - viewport.Height) / 2.0f;
   return viewport;
+#endif
 }
 
 RectF BaseWindow::GetScaledViewport() {
@@ -363,6 +382,12 @@ bool BaseWindow::CreateSDLWindow(SDL_WindowFlags flags) {
 }
 
 void BaseWindow::ApplyWindowSettings() {
+#ifdef IMPACTO_HOST_GPU
+  auto& settings = UserConfig::ActiveGameSettings();
+  SetDimensions(settings.ResolutionWidth.value_or(WindowWidth),
+                settings.ResolutionHeight.value_or(WindowHeight), 0, 1.0f);
+  return;
+#endif
   auto const& config = UserConfig::CommonSettings;
   WindowWidth = config.ResolutionWidth;
   WindowHeight = config.ResolutionHeight;

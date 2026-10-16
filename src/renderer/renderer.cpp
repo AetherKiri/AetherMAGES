@@ -3,6 +3,9 @@
 #include "../profile/game.h"
 #include "../userconfig.h"
 #include "../log.h"
+#ifdef IMPACTO_HOST_GPU
+#include "host/renderer.h"
+#endif
 
 #ifndef IMPACTO_DISABLE_OPENGL
 #include "opengl/renderer.h"
@@ -19,6 +22,9 @@
 namespace Impacto {
 
 void CreateRenderer() {
+#ifdef IMPACTO_HOST_GPU
+  Renderer = new Host::Renderer();
+#else
   switch (UserConfig::AdvancedSettings.ActiveRenderer) {
 #ifndef IMPACTO_DISABLE_OPENGL
     case RendererType::OpenGL:
@@ -40,6 +46,7 @@ void CreateRenderer() {
              "Unknown or unsupported renderer selected!\n");
       exit(1);
   }
+#endif
 }
 
 void BaseRenderer::DrawCCMessageBox(Sprite const& sprite, Sprite const& mask,

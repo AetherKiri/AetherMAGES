@@ -4,6 +4,7 @@
 #include <cassert>
 #include <vector>
 #include <utility>
+#include <atomic>
 
 #if IMPACTO_HAVE_THREADS
 #include <thread>
@@ -29,7 +30,7 @@ struct WorkItem {
 static uint32_t WorkCompletedEventType = 0;
 
 static void InitEventType() {
-  assert(WorkCompletedEventType == 0);
+  if (WorkCompletedEventType != 0) return;
   WorkCompletedEventType = SDL_RegisterEvents(1);
   assert(WorkCompletedEventType != 0);
 }
@@ -38,24 +39,24 @@ static void InitEventType() {
 
 static std::vector<std::thread> ThreadPool;
 static moodycamel::BlockingConcurrentQueue<WorkItem> QueueItems;
-static bool StopWorkers = false;
+static std::atomic<bool> StopWorkers = false;
 
 static void WorkerThread() {
   while (true) {
     WorkItem item;
     bool hasItem =
         QueueItems.wait_dequeue_timed(item, std::chrono::milliseconds(5));
-    if (StopWorkers) {
-      return;
-    }
     if (hasItem) {
       item.Handle();
+    } else if (StopWorkers) {
+      return;
     }
   }
 }
 
 void Init() {
   InitEventType();
+  StopWorkers = false;
   const uint32_t numThreads =
       std::min(static_cast<int>(std::thread::hardware_concurrency()), 4);
   for (uint32_t i = 0; i < numThreads; ++i) {
@@ -80,6 +81,13 @@ void StopWorkQueue() {
     thd.join();
   }
   ThreadPool.clear();
+  // Finish completed loaders before their scene resources are destroyed.
+  SDL_Event event;
+  while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, WorkCompletedEventType,
+                       WorkCompletedEventType) == 1) {
+    HandleEvent(&event);
+  }
+  WorkCompletedEventType = 0;
 }
 
 #else
