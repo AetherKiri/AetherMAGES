@@ -23,6 +23,7 @@
 #endif
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #include <algorithm>
 #include <cctype>
@@ -161,6 +162,12 @@ ImpactoHostResult PostCommand(HostState* st, std::function<ImpactoHostResult()> 
 }
 
 void EngineLoop(HostState* st) {
+#if defined(IMPACTO_EMBEDDED)
+  // Embedded hosts enter impacto through the host ABI rather than SDL's
+  // generated main wrapper. SDL3 otherwise rejects the first subsystem
+  // initialisation on Apple platforms with the "include SDL_main.h" error.
+  SDL_SetMainReady();
+#endif
 #ifdef IMPACTO_HOST_GPU
   Impacto::Host::Gpu = {};
 #endif
