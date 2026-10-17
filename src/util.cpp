@@ -272,6 +272,33 @@ std::string DumpMat4(glm::mat4* matrix, std::string_view columnSeparator,
 
 int ResizeImage(Rect const& srcRect, Rect const& dstRect,
                 std::span<uint8_t> src, std::span<uint8_t> dst) {
+#ifdef IMPACTO_HOST_GPU
+  // Save thumbnails are ordinary RGBA buffers; scaling them needs no SDL
+  // surface, window or platform backend.
+  if (srcRect.Width <= 0 || srcRect.Height <= 0 ||
+      dstRect.Width <= 0 || dstRect.Height <= 0 ||
+      src.size() < size_t(srcRect.Width) * srcRect.Height * 4 ||
+      dst.size() < size_t(dstRect.Width) * dstRect.Height * 4) return -1;
+  for (int y = 0; y < dstRect.Height; ++y) {
+    const float sy = std::clamp((y + 0.5f) * srcRect.Height / dstRect.Height - 0.5f,
+                                0.0f, float(srcRect.Height - 1));
+    const int y0 = int(sy), y1 = std::min(y0 + 1, srcRect.Height - 1);
+    for (int x = 0; x < dstRect.Width; ++x) {
+      const float sx = std::clamp((x + 0.5f) * srcRect.Width / dstRect.Width - 0.5f,
+                                  0.0f, float(srcRect.Width - 1));
+      const int x0 = int(sx), x1 = std::min(x0 + 1, srcRect.Width - 1);
+      for (int c = 0; c < 4; ++c) {
+        const float top = std::lerp(float(src[(size_t(y0) * srcRect.Width + x0) * 4 + c]),
+                                    float(src[(size_t(y0) * srcRect.Width + x1) * 4 + c]), sx - x0);
+        const float bottom = std::lerp(float(src[(size_t(y1) * srcRect.Width + x0) * 4 + c]),
+                                       float(src[(size_t(y1) * srcRect.Width + x1) * 4 + c]), sx - x0);
+        dst[(size_t(y) * dstRect.Width + x) * 4 + c] =
+            uint8_t(std::lerp(top, bottom, sy - y0) + 0.5f);
+      }
+    }
+  }
+  return 0;
+#else
   using SurfacePtr =
       std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>;
   if (srcRect.Width == dstRect.Width && srcRect.Height == dstRect.Height) {
@@ -315,6 +342,7 @@ int ResizeImage(Rect const& srcRect, Rect const& dstRect,
     return -1;
   }
   return 0;
+#endif
 }
 
 RectF RectF::Coalesce(const RectF& first, const RectF& second) {

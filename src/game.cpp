@@ -1,4 +1,5 @@
 #include "game.h"
+#include "events.h"
 
 #include "text/dialoguepage.h"
 #include "workqueue.h"
@@ -76,7 +77,9 @@ using namespace Profile::ScriptVars;
 namespace Game {
 
 void Init() {
+#ifndef IMPACTO_HOST_GPU
   SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+#endif
 
   WorkQueue::Init();
 
@@ -215,7 +218,7 @@ void Shutdown() {
     Video::VideoShutdown();
   }
 
-  if (+Profile::Game::GameFeatures & +GameFeature::Renderer2D) {
+  if (Renderer && (+Profile::Game::GameFeatures & +GameFeature::Renderer2D)) {
     Renderer->Shutdown();
   }
 #ifndef IMPACTO_HOST_GPU
@@ -229,10 +232,11 @@ void LauncherUpdate(float dt) {
 
   RequestCursor(CursorType::Default);
 
-  while (SDL_PollEvent(&e)) {
+  while (Events::Poll(&e)) {
     if (e.type == SDL_EVENT_QUIT) {
       ShouldQuit = true;
     }
+    if (WorkQueue::HandleEvent(&e)) continue;
 
 #ifndef IMPACTO_DISABLE_IMGUI
     ImGui_ImplSDL3_ProcessEvent(&e);
@@ -304,7 +308,7 @@ void UpdateSystem(float dt) {
     RequestCursor(CursorType::Default);
   }
 
-  while (SDL_PollEvent(&e)) {
+  while (Events::Poll(&e)) {
     if (e.type == SDL_EVENT_QUIT) {
       if (Profile::Patch::HasScriptedExitLogic) {
         Input::KeyboardButtonWentDown[SDL_SCANCODE_ESCAPE] = true;

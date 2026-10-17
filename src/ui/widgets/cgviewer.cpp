@@ -4,6 +4,7 @@
 #include "../../inputsystem.h"
 #include "../../vm/interface/input.h"
 #include "../../profile/game.h"
+#include <chrono>
 
 namespace Impacto {
 namespace UI {
@@ -39,6 +40,10 @@ void CgViewer::Hide() {
 }
 
 void CgViewer::UpdateInput(float dt) {
+  // Use a relative monotonic clock to retain float precision on long uptimes.
+  static const auto clockStart = std::chrono::steady_clock::now();
+  const float now = std::chrono::duration<float>(
+      std::chrono::steady_clock::now() - clockStart).count() + 1.0f;
   const auto isLMBDown = PADinputMouseIsDown & PAD1A || Input::TouchHeldDown;
   if (isLMBDown) {
     Position[CurrentVariation] += Input::CurMousePos - Input::PrevMousePos;
@@ -98,16 +103,12 @@ void CgViewer::UpdateInput(float dt) {
   bool mouseAdvance = false;
   if (PADinputMouseWentDown & PAD1A) {
     if (MouseDownTime == 0.0f) {
-      MouseDownTime = SDL_GetPerformanceCounter() /
-                      static_cast<float>(SDL_GetPerformanceFrequency());
+      MouseDownTime = now;
     }
   }
 
   if (MouseDownTime != 0.0f) {
-    const float timeDiff =
-        SDL_GetPerformanceCounter() /
-            static_cast<float>(SDL_GetPerformanceFrequency()) -
-        MouseDownTime;
+    const float timeDiff = now - MouseDownTime;
     if (!isLMBDown) {
       if (timeDiff < MouseAdvanceTime) {
         mouseAdvance = true;

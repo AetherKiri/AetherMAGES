@@ -86,6 +86,7 @@ static VfsArchive* FindArchive(std::string const& mountpoint,
 }
 
 void VfsInit() {
+  Archivers.clear();
   Archivers.push_back(AfsArchive::Create);
   Archivers.push_back(CpkArchive::Create);
   Archivers.push_back(Lnk4Archive::Create);
@@ -93,6 +94,12 @@ void VfsInit() {
   Archivers.push_back(TextArchive::Create);
 
   Profile::Vfs::Configure();
+}
+
+void VfsShutdown() {
+  std::unique_lock lock{Lock};
+  Mounts.clear();
+  Archivers.clear();
 }
 
 IoError VfsMount(std::string const& mountpoint,

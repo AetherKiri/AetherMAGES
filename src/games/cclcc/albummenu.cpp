@@ -86,7 +86,7 @@ void AlbumMenu::SetThumbnailDirections() {
     }
     ImpLog(LogLevel::Fatal, LogChannel::General,
            "Invalid FocusDirection value: {}", static_cast<int>(dir));
-    exit(1);
+    throw std::runtime_error("Invalid album FocusDirection");
   };
 
   for (auto& page : ThumbnailPages) {

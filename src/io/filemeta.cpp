@@ -1,8 +1,11 @@
 #include "filemeta.h"
 #include "../log.h"
 #include <system_error>
+#ifdef IMPACTO_HOST_GPU
+#include "../host/hostbridge.h"
+#endif
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && !defined(IMPACTO_HOST_GPU)
 #include <jni.h>
 #endif
 
@@ -66,6 +69,9 @@ IoError GetFilePermissions(std::string const& filePath,
 
 // User app config directory
 std::string const& GetPlatformConfigDir() {
+#ifdef IMPACTO_HOST_GPU
+  return Host::WritableDirectory();
+#else
   static const std::string path = [] {
 #if defined(__ANDROID__)  // prefer external storage dir for easier user access
     const char* configPath = SDL_GetAndroidExternalStoragePath();
@@ -102,9 +108,10 @@ std::string const& GetPlatformConfigDir() {
 #endif
   }();
   return path;
+#endif
 }
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && !defined(IMPACTO_HOST_GPU)
 std::string GetAndroidChosenDir() {
   std::string result;
   JNIEnv* env = (JNIEnv*)SDL_GetAndroidJNIEnv();

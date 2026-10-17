@@ -9,8 +9,8 @@ using WorkCompletionCallbackProc = auto (*)(void* data) -> void;
 
 void Init();
 // Push work onto the background thread. worker(data) will be called on the
-// background thread in FIFO fashion. Completion will be posted onto SDL's event
-// queue.
+// background thread in FIFO fashion. Completion is posted onto the engine's
+// event queue (an internal queue in embedded builds).
 void Push(void* data, WorkProc worker,
           WorkCompletionCallbackProc completionCallback);
 // Call this in the event loop to perform work completion callbacks on the main

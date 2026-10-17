@@ -476,8 +476,10 @@ inline bool StringEndsWith(std::string const& str, std::string const& ending) {
 inline bool StringEndsWithCi(std::string const& str,
                              std::string const& ending) {
   if (str.length() < ending.length()) return false;
-  return 0 == SDL_strcasecmp(str.c_str() + str.length() - ending.length(),
-                             ending.c_str());
+  return std::equal(ending.rbegin(), ending.rend(), str.rbegin(),
+      [](unsigned char a, unsigned char b) {
+        return std::tolower(a) == std::tolower(b);
+      });
 }
 
 // Trim whitespace in-place

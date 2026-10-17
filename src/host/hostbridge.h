@@ -7,6 +7,10 @@
 
 namespace Impacto {
 namespace Host {
+inline std::string& WritableDirectory() {
+  static std::string path;
+  return path;
+}
 
 /*
  * Process-wide state shared between the engine thread and the host-facing

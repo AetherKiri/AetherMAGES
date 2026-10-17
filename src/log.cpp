@@ -1,5 +1,6 @@
 #include <time.h>
 #include <cstdarg>
+#include <cstdio>
 
 #include <fmt/chrono.h>
 #include <SDL3/SDL_log.h>
@@ -11,7 +12,9 @@ namespace Impacto {
 
 // TODO Color output in console?
 
+#ifndef IMPACTO_HOST_GPU
 static SDL_LogOutputFunction DefaultLoggingFunction = nullptr;
+#endif
 static std::unique_ptr<Io::Stream> FileLogStream = nullptr;
 
 bool CheckLogConfig(LogLevel level, LogChannel channel) {
@@ -27,6 +30,14 @@ bool CheckLogConfig(LogLevel level, LogChannel channel) {
 
 void ConsoleWrite(LogLevel level, std::string_view str) {
   assert(level > LogLevel::Off && level < LogLevel::Max);
+#ifdef IMPACTO_HOST_GPU
+  if (UserConfig::CommonSettings.LoggingToConsole) {
+    std::fwrite(str.data(), 1, str.size(), stderr);
+  }
+  if (UserConfig::CommonSettings.LoggingToFile && FileLogStream) {
+    FileLogStream->Write(str.data(), str.size());
+  }
+#else
   switch (level) {
     case LogLevel::Fatal:
       SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "%s", str.data());
@@ -49,6 +60,7 @@ void ConsoleWrite(LogLevel level, std::string_view str) {
     default:
       assert(false);
   }
+#endif
 }
 
 void ImpLogImpl(LogLevel level, LogChannel channel, fmt::string_view format,
@@ -73,6 +85,7 @@ void ImpLogImpl(LogLevel level, LogChannel channel, fmt::string_view format,
   ConsoleWrite(level, line);
 }
 
+#ifndef IMPACTO_HOST_GPU
 void LogToFile(void* userdata, [[maybe_unused]] int category,
                SDL_LogPriority priority, const char* message) {
   if (!FileLogStream) return;
@@ -109,6 +122,7 @@ void SetSDLLogger(SDL_LogOutputFunction loggingFunction) {
     SDL_SetLogOutputFunction(DefaultLoggingFunction, nullptr);
   }
 }
+#endif
 
 void LogInitFile() {
   if (UserConfig::CommonSettings.LogFile.empty() ||
@@ -135,14 +149,18 @@ void LogInitFile() {
 }
 
 void LogInit() {
+#ifndef IMPACTO_HOST_GPU
   SetSDLLogger(SDLLogger);
   SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_VERBOSE);
+#endif
   LogInitFile();
 }
 
 std::string GetDefaultLogFile() {
   constexpr std::string_view logFileName = "Impacto_Log.txt";
-#if defined(__SWITCH__)
+#if defined(IMPACTO_HOST_GPU)
+  return (std::filesystem::path(Io::GetPlatformConfigDir()) / logFileName).string();
+#elif defined(__SWITCH__)
   return std::string(logFileName);
 #elif defined(__ANDROID__)
   std::string result = Io::GetAndroidChosenDir();

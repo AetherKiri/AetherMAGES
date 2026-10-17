@@ -158,7 +158,7 @@ void AudioShutdown() {
       AudioBackendType::Host) {
     HostAudioBridge::Get().Reset();
   }
-  Backend->Shutdown();
+  if (Backend) Backend->Shutdown();
 }
 
 void AudioInit() {

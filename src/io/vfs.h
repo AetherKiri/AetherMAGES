@@ -16,6 +16,8 @@ namespace Io {
 // Duplicate() them if you need to use them on multiple threads.
 
 void VfsInit();
+// Call after all loaders and playback have stopped using archive streams.
+void VfsShutdown();
 // Mount an archive from a physical file.
 // Archives with the same name can be mounted several times, files will always
 // be loaded from the latest-mounted archive they're found in

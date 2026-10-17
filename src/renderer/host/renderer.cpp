@@ -29,15 +29,22 @@ Renderer::Renderer() {
   RectF viewport = Window->GetViewport();
   TargetWidth = static_cast<uint32_t>(viewport.Width);
   TargetHeight = static_cast<uint32_t>(viewport.Height);
-  Framebuffers[0] = CreateTarget(TargetWidth, TargetHeight);
-  Stencils[0] = CreateTarget(TargetWidth, TargetHeight);
-  Published = CreateTarget(TargetWidth, TargetHeight);
-  Characters = CreateTarget(TargetWidth, TargetHeight);
-  Projection = glm::ortho(0.0f, float(TargetWidth), float(TargetHeight), 0.0f);
-  uint8_t white[4] = {255, 255, 255, 255};
-  SpriteSheet sheet(1.0f, 1.0f);
-  sheet.Texture = SubmitTexture(TexFmt_RGBA, white, 1, 1);
-  RectSprite = Sprite(sheet, 0, 0, 1, 1);
+  try {
+    Framebuffers[0] = CreateTarget(TargetWidth, TargetHeight);
+    Stencils[0] = CreateTarget(TargetWidth, TargetHeight);
+    Published = CreateTarget(TargetWidth, TargetHeight);
+    Characters = CreateTarget(TargetWidth, TargetHeight);
+    Projection = glm::ortho(0.0f, float(TargetWidth), float(TargetHeight), 0.0f);
+    uint8_t white[4] = {255, 255, 255, 255};
+    SpriteSheet sheet(1.0f, 1.0f);
+    sheet.Texture = SubmitTexture(TexFmt_RGBA, white, 1, 1);
+    RectSprite = Sprite(sheet, 0, 0, 1, 1);
+  } catch (...) {
+    // A throwing constructor has no destructor; release targets allocated
+    // before a later GPU allocation failed.
+    Shutdown();
+    throw;
+  }
 }
 Renderer::~Renderer() { Shutdown(); }
 void Renderer::Init() {

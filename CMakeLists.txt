@@ -57,6 +57,7 @@ endif ()
 set(Impacto_Src
     src/main.cpp
     src/log.cpp
+    src/events.cpp
     src/util.cpp
     src/workqueue.cpp
     src/game.cpp
@@ -832,6 +833,8 @@ if (IMPACTO_BUILD_HOST)
     # The host library replaces the standalone entry point.
     list(REMOVE_ITEM Impacto_Src src/main.cpp)
     if (IMPACTO_HOST_GPU)
+        list(REMOVE_ITEM Impacto_Src src/renderer/window.cpp)
+        list(APPEND Impacto_Src src/renderer/host/window.cpp)
         list(APPEND Impacto_Src src/renderer/host/renderer.cpp src/renderer/host/scene.cpp)
     endif ()
 endif ()
@@ -1074,6 +1077,12 @@ else ()
     set(SDL3_LIBRARIES
         "$<IF:$<TARGET_EXISTS:SDL3::SDL3>,SDL3::SDL3,SDL3::SDL3-static>"
     )
+    if(IMPACTO_HOST_GPU)
+        # Keep SDL's event/scancode/endian declarations for source compatibility,
+        # but do not link any SDL runtime or inherit its platform frameworks.
+        get_target_property(SDL3_INCLUDE_DIRS SDL3::Headers INTERFACE_INCLUDE_DIRECTORIES)
+        set(SDL3_LIBRARIES "")
+    endif()
     find_package(Ogg CONFIG REQUIRED)
     find_package(Vorbis CONFIG REQUIRED)
     find_package(WebP CONFIG REQUIRED)
@@ -1353,9 +1362,7 @@ if(ANDROID AND NOT IMPACTO_EMBEDDED)
 elseif(IMPACTO_BUILD_HOST)
     if(IMPACTO_EMBEDDED)
         if((APPLE AND NOT IOS) OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-            # Isolate SDL3 from the host's SDL2. Mach-O needs separate images
-            # for static SDL archives; ELF needs separate images for the
-            # unversioned SDL2 and versioned SDL3 references as well.
+            # Keep the engine globals and dependencies in a separate image.
             add_library(impacto SHARED ${Impacto_Src} ${Impacto_Header})
             set_target_properties(impacto PROPERTIES
                 OUTPUT_NAME "impacto_host"
@@ -1366,8 +1373,7 @@ elseif(IMPACTO_BUILD_HOST)
                     BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
             endif()
         else()
-            # The host packages the embedded engine into its extension. SDL
-            # isolation is handled by HostSdl.cmake and the iOS archive stage.
+            # Mobile hosts package the embedded engine into their extension.
             add_library(impacto STATIC ${Impacto_Src} ${Impacto_Header})
         endif()
     else()
@@ -1380,11 +1386,26 @@ else()
     add_executable(impacto ${Impacto_Src} ${Impacto_Header})
 endif()
 
-if (IMPACTO_EMBEDDED)
+if (IMPACTO_EMBEDDED AND NOT IMPACTO_HOST_GPU)
     include(cmake/HostSdl.cmake)
 endif()
 
-if (APPLE)
+if(IMPACTO_HOST_GPU)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        file(CONFIGURE OUTPUT "${PROJECT_BINARY_DIR}/host-exports.map"
+            CONTENT "{ global: impacto_host_*; local: *; };\n" @ONLY)
+        target_link_options(impacto PRIVATE
+            "LINKER:--no-undefined"
+            "LINKER:--version-script=${PROJECT_BINARY_DIR}/host-exports.map")
+        set_property(TARGET impacto APPEND PROPERTY LINK_DEPENDS "${PROJECT_BINARY_DIR}/host-exports.map")
+    endif()
+    add_custom_command(TARGET impacto POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" "-DNM=${CMAKE_NM}" "-DBINARY=$<TARGET_FILE:impacto>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoSdl.cmake"
+        COMMENT "Checking embedded MAGES has no SDL runtime dependencies" VERBATIM)
+endif()
+
+if (APPLE AND NOT IMPACTO_EMBEDDED)
     set(MACOSX_BUNDLE_ICON_FILE icon.icns)
     set(APP_ICON_MACOS "${CMAKE_CURRENT_SOURCE_DIR}/resources/common/icons/icon.icns")
     set_source_files_properties(${APP_ICON_MACOS} PROPERTIES
@@ -1404,6 +1425,12 @@ if (APPLE)
         INSTALL_RPATH "@executable_path/../Frameworks"
         BUILD_WITH_INSTALL_RPATH TRUE
     )
+endif()
+
+if(APPLE AND IMPACTO_EMBEDDED AND NOT IOS)
+    # Preserve the staged macOS image name. iOS must retain libimpacto.a,
+    # which the host merges into the Godot extension archive.
+    set_target_properties(impacto PROPERTIES OUTPUT_NAME "Impacto")
 endif()
 
 if(IOS)

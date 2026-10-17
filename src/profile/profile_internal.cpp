@@ -129,7 +129,7 @@ std::optional<bool> TryGetImpl<bool>::Call() {
 }
 
 void ClearProfileInternal() {
-  lua_close(LuaState);
+  if (LuaState) lua_close(LuaState);
   LuaState = nullptr;
 }
 

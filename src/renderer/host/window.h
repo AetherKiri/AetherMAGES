@@ -2,18 +2,15 @@
 
 #include "../window.h"
 #include "../../userconfig.h"
-#include <stdexcept>
 
 namespace Impacto::Host {
 
-// Godot owns the platform window and graphics device. SDL is only an event
-// queue in an embedded runtime, including on Android and iOS.
+// Godot owns the platform window and graphics device. No SDL subsystem is
+// initialized by the embedded runtime, including on Android and iOS.
 class HostWindow final : public BaseWindow {
  public:
   void Init() override {
     SDLWindow = nullptr;
-    if (!SDL_InitSubSystem(SDL_INIT_EVENTS))
-      throw std::runtime_error(SDL_GetError());
     SetDimensions(UserConfig::CommonSettings.ResolutionWidth,
                   UserConfig::CommonSettings.ResolutionHeight, 0, 1.0f);
   }

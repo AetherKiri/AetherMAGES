@@ -1,9 +1,11 @@
 # Embedded GPU rendering
 
 Configure with `IMPACTO_BUILD_HOST=ON` and `IMPACTO_EMBEDDED=ON` to use
-`IMPACTO_HOST_GPU`. This configuration excludes OpenGL and creates no SDL
-window or graphics context. SDL supplies only the event queue. The standalone
-host configuration can still use offscreen OpenGL.
+`IMPACTO_HOST_GPU`. This configuration excludes OpenGL and links no SDL runtime.
+Godot owns the platform window, input and lifecycle. SDL headers supply event,
+scancode and endian declarations; an internal queue owns injected input text
+and worker completions. The standalone host can still use SDL and offscreen
+OpenGL.
 
 Register `impacto_host_gpu_callbacks_t` from `src/host/impacto_host_gpu.h`
 before opening a game. The engine submits texture operations, GLSL 450 draw
@@ -34,11 +36,18 @@ and extracts them into its configured cache before provider creation. Bundled
 resource reads remain anchored to `EngineDataRoot` after startup restores the
 application working directory. Game archives are supplied separately.
 
-Linux isolates SDL3 symbols as `AetherSDL3_*` with `patchelf` for shared SDL
-or `objcopy` for static SDL. Android applies the same static rename before
-linking. macOS keeps impacto in a separate dynamic image; iOS merges static
-archives after renaming SDL3 and the host's SDL2 separately. No graphics
-context crosses the host ABI.
+Linux and macOS keep impacto in a separate dynamic image. Android and iOS
+merge static engine archives, with iOS retaining the name `libimpacto.a`.
+No embedded platform links or packages a MAGES SDL3 runtime. A post-build
+symbol check rejects both SDL imports and statically bundled SDL symbols;
+Linux also rejects unresolved symbols at link time. No graphics context
+crosses the host ABI.
+
+Startup errors, including invalid Lua profiles and first-frame GPU failures,
+return through the host ABI. Teardown stops workers and drains completions
+before releasing rendering and playback state, then clears archive mounts
+and pending input. Worker exceptions are delivered on the engine thread.
+The configured writable directory holds the embedded user configuration.
 
 The initial GPU ABI is version 1. Callers must provide its complete layout and
 all required operations; batch begin/end callbacks must be supplied together.

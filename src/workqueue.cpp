@@ -1,10 +1,15 @@
 #include "workqueue.h"
+#include "events.h"
 
-#include "impacto.h"
+#include "config.h"
 #include <cassert>
+#include <chrono>
 #include <vector>
 #include <utility>
 #include <atomic>
+#include <algorithm>
+#include <memory>
+#include <exception>
 
 #if IMPACTO_HAVE_THREADS
 #include <thread>
@@ -24,6 +29,7 @@ struct WorkItem {
   void* Data;
   WorkProc Perform;
   WorkCompletionCallbackProc OnComplete;
+  std::exception_ptr Error;
   void Handle();
 };
 
@@ -31,8 +37,22 @@ static uint32_t WorkCompletedEventType = 0;
 
 static void InitEventType() {
   if (WorkCompletedEventType != 0) return;
-  WorkCompletedEventType = SDL_RegisterEvents(1);
+  WorkCompletedEventType = Events::Register();
   assert(WorkCompletedEventType != 0);
+}
+
+static void DrainCompletions() {
+  SDL_Event event;
+  std::exception_ptr error;
+  while (Events::PollType(&event, WorkCompletedEventType)) {
+    try {
+      HandleEvent(&event);
+    } catch (...) {
+      if (!error) error = std::current_exception();
+    }
+  }
+  WorkCompletedEventType = 0;
+  if (error) std::rethrow_exception(error);
 }
 
 #if IMPACTO_HAVE_THREADS
@@ -55,6 +75,7 @@ static void WorkerThread() {
 }
 
 void Init() {
+  if (!ThreadPool.empty()) return;
   InitEventType();
   StopWorkers = false;
   const uint32_t numThreads =
@@ -82,12 +103,7 @@ void StopWorkQueue() {
   }
   ThreadPool.clear();
   // Finish completed loaders before their scene resources are destroyed.
-  SDL_Event event;
-  while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, WorkCompletedEventType,
-                       WorkCompletedEventType) == 1) {
-    HandleEvent(&event);
-  }
-  WorkCompletedEventType = 0;
+  DrainCompletions();
 }
 
 #else
@@ -104,25 +120,31 @@ void Push(void* data, WorkProc worker,
   item.OnComplete = completionCallback;
   item.Handle();
 }
-void StopWorkQueue() {}
+void StopWorkQueue() {
+  DrainCompletions();
+}
 
 #endif
 
 void WorkItem::Handle() {
-  Perform(Data);
+  try {
+    Perform(Data);
+  } catch (...) {
+    Error = std::current_exception();
+  }
   WorkItem* copy = new WorkItem(*this);
   SDL_Event evt{};
   evt.type = WorkCompletedEventType;
   evt.user.data1 = copy;
-  SDL_PushEvent(&evt);
+  Events::Push(&evt);
 }
 
 bool HandleEvent(SDL_Event* evt) {
   if (evt->type != WorkCompletedEventType) return false;
 
-  auto item = static_cast<WorkItem*>(evt->user.data1);
+  std::unique_ptr<WorkItem> item(static_cast<WorkItem*>(evt->user.data1));
+  if (item->Error) std::rethrow_exception(item->Error);
   item->OnComplete(item->Data);
-  delete item;
   return true;
 }
 

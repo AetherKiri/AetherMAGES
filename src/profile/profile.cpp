@@ -43,14 +43,14 @@ static void RunLuaScriptBuffer(std::span<char const> buffer) {
   if (luaL_loadbuffer(LuaState, buffer.data(), buffer.size(), buffer.data())) {
     ImpLog(LogLevel::Fatal, LogChannel::Profile,
            "Lua profile compile error: {:s}\n", lua_tostring(LuaState, -1));
-    lua_close(LuaState);
-    exit(1);
+    throw std::runtime_error(fmt::format("Lua profile compile error: {}",
+                                        lua_tostring(LuaState, -1)));
   }
   if (lua_pcall(LuaState, 0, 0, 0)) {
     ImpLog(LogLevel::Fatal, LogChannel::Profile,
            "Lua profile execute error: {:s}\n", lua_tostring(LuaState, -1));
-    lua_close(LuaState);
-    exit(1);
+    throw std::runtime_error(fmt::format("Lua profile execute error: {}",
+                                        lua_tostring(LuaState, -1)));
   }
 }
 
@@ -60,7 +60,8 @@ static void RunLuaScript(const char* path) {
   if (luaL_dofile(LuaState, path)) {
     ImpLog(LogLevel::Fatal, LogChannel::Profile,
            "Lua profile compile error: {:s}\n", lua_tostring(LuaState, -1));
-    exit(1);
+    throw std::runtime_error(fmt::format("Lua profile error in {}: {}", path,
+                                        lua_tostring(LuaState, -1)));
   }
   ImpLog(LogLevel::Info, LogChannel::Profile, "Lua profile execute success\n");
 }
@@ -89,6 +90,7 @@ static int LuaInclude(lua_State* ctx) {
     ImpLog(LogLevel::Error, LogChannel::Profile, "Could not open {:s}\n", file);
     return 0;
   }
+  std::unique_ptr<Io::Stream> ownedStream(stream);
 
   char const prefix[] = "do\n";
   char const suffix[] = "\nend";
@@ -102,8 +104,6 @@ static int LuaInclude(lua_State* ctx) {
   int64_t len = stream->Read(script.get() + strlen(prefix), stream->Meta.Size);
 
   if (len < 0) {
-    delete stream;
-
     ImpLog(LogLevel::Error, LogChannel::Profile, "Could not open {:s}\n", file);
     return 0;
   }
@@ -113,8 +113,6 @@ static int LuaInclude(lua_State* ctx) {
   len += strlen(suffix);
 
   RunLuaScriptBuffer({script.get(), static_cast<size_t>(len)});
-
-  delete stream;
 
   lua_pop(ctx, -1);
 
@@ -210,6 +208,8 @@ static void DefineEnums() {
 }
 
 void Init() {
+  if (LuaState) ClearProfileInternal();
+  IncludedFiles.clear();
   LuaState = luaL_newstate();
   // Set up API
   luaL_openlibs(LuaState);
@@ -284,7 +284,7 @@ void ConfigureGameProfile() {
   if (BasePaths::RootPatchesDir.empty() && activePatch) {
     ImpLog(LogLevel::Fatal, LogChannel::Profile,
            "Patch is enabled but no patch directory is specified\n");
-    exit(1);
+    throw std::runtime_error("Patch is enabled but no patch directory is specified");
   }
   auto const& activeGameDef = GameDefinitions.at(UserConfig::GetActiveGame());
 
@@ -298,7 +298,7 @@ void ConfigureGameProfile() {
           "Patch is enabled but patch.lua path is missing for patch profile {} "
           "in game {} definition\n",
           *activePatch, UserConfig::GetActiveGame());
-      exit(1);
+      throw std::runtime_error("Patch profile is missing from game definition");
     }
     RunLuaScript(patchProfilePathItr->second.c_str());
   }

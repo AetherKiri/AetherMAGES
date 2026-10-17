@@ -3,6 +3,10 @@
 #include "gameroot.h"
 
 #include "hostbridge.h"
+#include "../events.h"
+#include "../workqueue.h"
+#include "../inputsystem.h"
+#include "../io/vfs.h"
 
 #include "../game.h"
 #include "../log.h"
@@ -23,7 +27,10 @@
 #endif
 
 #include <SDL3/SDL.h>
+#ifndef IMPACTO_HOST_GPU
+#define SDL_MAIN_HANDLED
 #include <SDL3/SDL_main.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -162,10 +169,9 @@ ImpactoHostResult PostCommand(HostState* st, std::function<ImpactoHostResult()> 
 }
 
 void EngineLoop(HostState* st) {
-#if defined(IMPACTO_EMBEDDED)
-  // Embedded hosts enter impacto through the host ABI rather than SDL's
-  // generated main wrapper. SDL3 otherwise rejects the first subsystem
-  // initialisation on Apple platforms with the "include SDL_main.h" error.
+#ifndef IMPACTO_HOST_GPU
+  // The offscreen standalone host still uses SDL video; Godot builds use no
+  // SDL subsystems or platform entry point at all.
   SDL_SetMainReady();
 #endif
 #ifdef IMPACTO_HOST_GPU
@@ -270,6 +276,11 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
   if (st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
 
   Host::HostBridge::Get().Reset();
+  Events::Reset();
+  Input::ClearTouch();
+  std::fill(std::begin(Input::KeyboardButtonIsDown), std::end(Input::KeyboardButtonIsDown), false);
+  std::fill(std::begin(Input::MouseButtonIsDown), std::end(Input::MouseButtonIsDown), false);
+  Host::WritableDirectory() = st->WritableDir;
   Host::ArchiveRoot.clear();
   Host::ProfileArchiveRoot.clear();
   UserConfig::SetActiveGame("");
@@ -342,11 +353,11 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
   std::filesystem::current_path(dataDir, ec);
   if (ec) return IMPACTO_HOST_IO_ERROR;
 
+#ifndef IMPACTO_HOST_GPU
   // Headless by construction: pick SDL's offscreen video driver for engine
   // initialisation, restore the previous setting afterwards so other SDL users
   // in this process are unaffected. The hint (not the environment) is the
   // modern SDL3 way and is scoped to this process' SDL state.
-#ifndef IMPACTO_HOST_GPU
   const char* oldDriverHint = SDL_GetHint(SDL_HINT_VIDEO_DRIVER);
   SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, "offscreen",
                           SDL_HINT_OVERRIDE);
@@ -429,6 +440,17 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
       Window->RenderScale = 1.0f;
       Window->SetDimensions((int)width, (int)height, 0, 1.0f);
     }
+
+    // First-frame failures need the same cleanup as profile initialization:
+    // GameOpened is still false, so destroy alone cannot reclaim a half boot.
+    if (UserConfig::GetActiveGame().empty()) {
+      Game::LauncherUpdate(1.0f / 60.0f);
+      Game::LauncherRender();
+    } else {
+      Game::Update(1.0f / 60.0f);
+      Game::Render();
+    }
+    CaptureFrame();
   } catch (std::exception const& e) {
     Host::HostBridge::Get().SetEngineThreadError(e.what());
     ImpLog(LogLevel::Error, LogChannel::General,
@@ -462,16 +484,6 @@ ImpactoHostResult DoOpenGame(HostState* st, std::string gameRoot,
 #else
       "OpenGL (offscreen, llvmpipe-safe), {:d}x{:d}", width, height));
 #endif
-
-  // Produce a first frame so the host can present immediately.
-  if (UserConfig::GetActiveGame().empty()) {
-    Game::LauncherUpdate(1.0f / 60.0f);
-    Game::LauncherRender();
-  } else {
-    Game::Update(1.0f / 60.0f);
-    Game::Render();
-  }
-  CaptureFrame();
 
   st->GameOpened.store(true);
   st->ShouldQuit.store(false);
@@ -524,7 +536,20 @@ ImpactoHostResult DoTick(HostState* st, uint32_t deltaMs) {
 // Must run on the engine thread.
 void TeardownEngine(HostState* st) {
   using namespace Impacto;
-  if (Window == nullptr && Renderer == nullptr) return;
+  // Init can fail after worker creation but before window/renderer creation.
+  try {
+    WorkQueue::StopWorkQueue();
+  } catch (std::exception const& e) {
+    ImpLog(LogLevel::Error, LogChannel::General,
+           "Host bridge: loader failed during shutdown: {:s}\n", e.what());
+  } catch (...) {
+  }
+  Profile::ClearProfile();
+  if (Window == nullptr && Renderer == nullptr) {
+    Io::VfsShutdown();
+    Events::Reset();
+    return;
+  }
 
   // Game::Shutdown() ends in Window->Shutdown(); the GL implementation of
   // that calls exit(0). Swap in a no-op window for the duration so the host
@@ -568,8 +593,12 @@ void TeardownEngine(HostState* st) {
     Renderer = nullptr;
   }
 #endif
+#ifndef IMPACTO_HOST_GPU
   SDL_Quit();
+#endif
+  Events::Reset();
 
+  Io::VfsShutdown();
   Audio::HostAudioBridge::Get().Reset();
   st->GameOpened.store(false);
 }
@@ -873,7 +902,7 @@ int32_t impacto_host_send_key(void* host, uint32_t sdl_scancode,
   event.key.key = 0;
   event.key.mod = SDL_KMOD_NONE;
   event.key.repeat = false;
-  if (!SDL_PushEvent(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
+  if (!Impacto::Events::Push(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
   return IMPACTO_HOST_OK;
 }
 
@@ -897,7 +926,7 @@ int32_t impacto_host_send_pointer(void* host, double x, double y,
     event.button.down = down != 0;
     event.button.clicks = 1;
   }
-  if (!SDL_PushEvent(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
+  if (!Impacto::Events::Push(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
   return IMPACTO_HOST_OK;
 }
 
@@ -910,7 +939,7 @@ int32_t impacto_host_send_wheel(void* host, double dx, double dy) {
   event.type = SDL_EVENT_MOUSE_WHEEL;
   event.wheel.x = (float)dx;
   event.wheel.y = (float)dy;
-  if (!SDL_PushEvent(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
+  if (!Impacto::Events::Push(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
   return IMPACTO_HOST_OK;
 }
 
@@ -921,6 +950,7 @@ int32_t impacto_host_send_text(void* host, const char* utf8_text) {
   }
   if (!st->GameOpened.load()) return IMPACTO_HOST_INVALID_STATE;
 
+#ifndef IMPACTO_HOST_GPU
   /* SDL3's TEXT_INPUT event carries a const char* into storage owned by the
    * sender, and the event may sit in SDL's queue until the engine thread
    * polls it. Keep a small ring of slots so the last few texts stay valid
@@ -941,11 +971,15 @@ int32_t impacto_host_send_text(void* host, const char* utf8_text) {
   const size_t length = std::min(std::strlen(utf8_text), maxLength);
   std::memcpy(slot, utf8_text, length);
   slot[length] = '\0';
+#else
+  // The internal queue owns a complete copy, including pasted UTF-8 text.
+  const char* slot = utf8_text;
+#endif
 
   SDL_Event event{};
   event.type = SDL_EVENT_TEXT_INPUT;
   event.text.text = slot;
-  if (!SDL_PushEvent(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
+  if (!Impacto::Events::Push(&event)) return IMPACTO_HOST_INTERNAL_ERROR;
   return IMPACTO_HOST_OK;
 }
 

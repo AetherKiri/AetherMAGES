@@ -37,11 +37,22 @@ struct PendingTapGroup {
 static std::optional<PendingTapGroup> PendingTaps;
 static bool NoPinchGesture = false;
 
+#ifndef IMPACTO_HOST_GPU
 static bool HardwareFaceButtonsAreSwapped(SDL_Gamepad* gamepad) {
   if (gamepad == nullptr) return false;
 
   return SDL_GetGamepadButtonLabel(gamepad, SDL_GAMEPAD_BUTTON_SOUTH) ==
          SDL_GAMEPAD_BUTTON_LABEL_B;
+}
+#endif
+
+static Uint64 InputTimeNS() {
+#ifdef IMPACTO_HOST_GPU
+  return static_cast<Uint64>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
+#else
+  return SDL_GetTicksNS();
+#endif
 }
 
 static SDL_GamepadButton NormalizeFaceButton(SDL_JoystickID which,
@@ -55,9 +66,11 @@ static SDL_GamepadButton NormalizeFaceButton(SDL_JoystickID which,
     return button;
   }
 
+#ifndef IMPACTO_HOST_GPU
   if (HardwareFaceButtonsAreSwapped(SDL_GetGamepadFromID(which))) {
     button = swapSouthEast(button);
   }
+#endif
 
   if (UserConfig::CommonSettings.SwapConfirmCancelButtons) {
     button = swapSouthEast(button);
@@ -68,12 +81,14 @@ static SDL_GamepadButton NormalizeFaceButton(SDL_JoystickID which,
 
 bool FaceButtonsFlipped() {
   bool flipped = false;
+#ifndef IMPACTO_HOST_GPU
   int count = 0;
   if (SDL_JoystickID* ids = SDL_GetGamepads(&count)) {
     if (count > 0)
       flipped = HardwareFaceButtonsAreSwapped(SDL_GetGamepadFromID(ids[0]));
     SDL_free(ids);
   }
+#endif
   if (UserConfig::CommonSettings.SwapConfirmCancelButtons) flipped = !flipped;
   return flipped;
 }
@@ -92,14 +107,14 @@ void BeginFrame() {
   MouseWheelDeltaX = MouseWheelDeltaY = 0;
 
   TouchTapCount = 0;
-  if (PendingTaps && nanoseconds(SDL_GetTicksNS()) - PendingTaps->FirstUpTime >
+  if (PendingTaps && nanoseconds(InputTimeNS()) - PendingTaps->FirstUpTime >
                          TapGroupWindow) {
     TouchTapCount = PendingTaps->Count;
     PendingTaps.reset();
   }
   const bool isTouchHeld = CurrentFingers[0].has_value() &&
                            ((CurrentFingers[0]->StartTime + LongPressTime <=
-                             nanoseconds(SDL_GetTicksNS())) ||
+                              nanoseconds(InputTimeNS())) ||
                             !CurrentFingers[0]->Tappable);
   if (!TouchHeldDown && isTouchHeld) {
     CurrentFingers[0]->Tappable = false;
@@ -183,9 +198,10 @@ static void HandleFlicks(SDL_TouchFingerEvent const& fingerUpEvent,
 bool HandleEvent(SDL_Event const* ev) {
   switch (ev->type) {
     case SDL_EVENT_GAMEPAD_ADDED: {
-      SDL_GamepadDeviceEvent const* evt = &ev->gdevice;
       CurrentInputDevice = Device::Controller;
-      SDL_OpenGamepad(evt->which);
+#ifndef IMPACTO_HOST_GPU
+      SDL_OpenGamepad(ev->gdevice.which);
+#endif
       return true;
     }
     case SDL_EVENT_MOUSE_MOTION: {
@@ -296,7 +312,8 @@ bool HandleEvent(SDL_Event const* ev) {
       SDL_TouchFingerEvent const* evt = &ev->tfinger;
       CurrentInputDevice = Device::Touch;
 
-      // More stale finger handling
+      // SDL does not track fingers injected by the Godot host.
+#ifndef IMPACTO_HOST_GPU
       int fingerCount = 0;
       if (SDL_Finger** fingers =
               SDL_GetTouchFingers(evt->touchID, &fingerCount)) {
@@ -310,6 +327,7 @@ bool HandleEvent(SDL_Event const* ev) {
         for (auto& finger : CurrentFingers) finger.reset();
         PendingTaps.reset();
       }
+#endif
 
       auto freeFingerSlot =
           std::find_if(CurrentFingers.begin(), CurrentFingers.end(),
