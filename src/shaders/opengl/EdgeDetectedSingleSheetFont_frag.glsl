@@ -13,7 +13,11 @@ uniform float IntensityShift;
 uniform float AlphaShift;
 
 float getIntensity(float texValue, float valueShift, float difference) {
-    float intensity = clamp(0.5 + (texValue - valueShift) / (2.0 * difference * DifferenceFactor), 0.0, 1.0);
+    // Constant atlas regions have no local gradient. Keep the transition
+    // finite, including texValue == valueShift, which otherwise produces 0/0
+    // and leaves glyph coverage dependent on the GPU's NaN handling.
+    float transitionWidth = max(2.0 * difference * DifferenceFactor, 0.000001);
+    float intensity = clamp(0.5 + (texValue - valueShift) / transitionWidth, 0.0, 1.0);
     return (3.0 - 2.0 * intensity) * pow(intensity, 2.0);
 }
 
