@@ -14,10 +14,13 @@ class VorbisAudioStream : public AudioStream {
   int Read(void* buffer, int samples) override;
   void Seek(int samples) override;
 
+  // Public so embed hosts can register the creator explicitly (iOS linker
+  // strips self-registering statics).
+  static AudioStream* Create(Io::Stream* stream);
+
   bool VfOpen = false;
 
  private:
-  static AudioStream* Create(Io::Stream* stream);
   VorbisAudioStream() {}
   void InitWithInfo(vorbis_info* info);
 

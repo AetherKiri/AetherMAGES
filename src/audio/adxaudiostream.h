@@ -19,13 +19,16 @@ class AdxAudioStream : public AudioStream,
   int Read(void* buffer, int samples) override;
   void Seek(int samples) override;
 
+  // Public so embed hosts can register the creator explicitly (iOS linker
+  // strips self-registering statics).
+  static AudioStream* Create(Io::Stream* stream);
+
  protected:
   bool DecodeBuffer();
   int16_t DecodedBuffer[127] = {0};
   uint8_t EncodedBuffer[256] = {0};
 
  private:
-  static AudioStream* Create(Io::Stream* stream);
   AdxAudioStream() {}
   void InitWithInfo(AdxHeaderInfo* info);
   void SetCoefficients(double cutoff, double sampleRate);

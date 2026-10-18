@@ -20,11 +20,14 @@ class Atrac9AudioStream : public AudioStream,
   int Read(void* buffer, int samples) override;
   void Seek(int samples) override;
 
+  // Public so embed hosts can register the creator explicitly (iOS linker
+  // strips self-registering statics).
+  static AudioStream* Create(Io::Stream* stream);
+
  protected:
   bool DecodeBuffer();
 
  private:
-  static AudioStream* Create(Io::Stream* stream);
   Atrac9AudioStream() {}
 
   void InitWithInfo(At9ContainerInfo* container, Atrac9CodecInfo* codecinfo);
