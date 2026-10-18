@@ -16,6 +16,12 @@
 #include "../audio/host/hostaudiobridge.h"
 #include "../renderer/renderer.h"
 #include "../renderer/window.h"
+#include "../texture/texture.h"
+#include "../audio/audiostream.h"
+#include "../audio/adxaudiostream.h"
+#include "../audio/hcaaudiostream.h"
+#include "../audio/vorbisaudiostream.h"
+#include "../audio/atrac9audiostream.h"
 #ifdef IMPACTO_HOST_GPU
 #include "../renderer/host/renderer.h"
 #endif
@@ -31,6 +37,50 @@
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL_main.h>
 #endif
+
+namespace Impacto::Gxm {
+bool TextureLoadDDS(Io::Stream* stream, Texture* outTexture);
+}
+namespace Impacto::TexLoad {
+// Defined in their translation units. They normally self-register through
+// file-local statics, but those are only linked when the objects are
+// referenced (see RegisterBuiltinMediaHandlers below).
+bool TextureLoadGXT(Io::Stream* stream, Texture* outTexture);
+bool TextureLoadBNTX(Io::Stream* stream, Texture* outTexture);
+bool TextureLoadSTBI(Io::Stream* stream, Texture* outTexture);
+bool TextureLoadWebP(Io::Stream* stream, Texture* outTexture);
+}  // namespace Impacto::TexLoad
+
+namespace Impacto::Host {
+
+void RegisterBuiltinMediaHandlers() {
+  // The texture loaders (DDS, GXT, BNTX, STBI/PNG-JPEG, WebP) and the audio
+  // stream decoders (ADX, HCA, Vorbis, ATRAC9) self-register through
+  // file-local statics. That works when impacto is an executable or a
+  // shared library, but inside a static archive those objects carry no
+  // externally referenced symbols, so final linkers drop them and the
+  // registries stay empty: every DDS/PNG texture falls back to the
+  // placeholder pattern (observed as red stripes on the MO8 PC layout on
+  // iOS, where the extension is a static archive linked by the app) and
+  // every audio stream fails to open. Register them from here as well:
+  // this translation unit is always linked because every embed calls
+  // impacto_host_create. Duplicate entries are harmless (the registries
+  // just try the same loader twice).
+  static bool registered = false;
+  if (registered) return;
+  registered = true;
+  Texture::AddTextureLoader(&Gxm::TextureLoadDDS);
+  Texture::AddTextureLoader(&TexLoad::TextureLoadGXT);
+  Texture::AddTextureLoader(&TexLoad::TextureLoadBNTX);
+  Texture::AddTextureLoader(&TexLoad::TextureLoadSTBI);
+  Texture::AddTextureLoader(&TexLoad::TextureLoadWebP);
+  Audio::AudioStream::AddAudioStreamCreator(&Audio::AdxAudioStream::Create);
+  Audio::AudioStream::AddAudioStreamCreator(&Audio::HcaAudioStream::Create);
+  Audio::AudioStream::AddAudioStreamCreator(&Audio::VorbisAudioStream::Create);
+  Audio::AudioStream::AddAudioStreamCreator(&Audio::Atrac9AudioStream::Create);
+}
+
+}  // namespace Impacto::Host
 
 #include <algorithm>
 #include <cctype>
@@ -640,6 +690,11 @@ int32_t impacto_host_create(const impacto_host_desc_t* desc, void** out_host) {
   return IMPACTO_HOST_NOT_SUPPORTED;
 #endif
   std::lock_guard<std::mutex> instanceLock(g_InstanceMutex);
+
+  // Make sure the self-registering texture loaders and audio decoders are
+  // linked in even when impacto is consumed as a static archive (iOS app
+  // link, any non-WHOLEARCHIVE consumer). Idempotent.
+  Impacto::Host::RegisterBuiltinMediaHandlers();
   if (g_Instance != nullptr) {
     // The engine is built around process-global state; one embedding at a
     // time.

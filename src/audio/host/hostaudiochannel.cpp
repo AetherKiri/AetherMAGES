@@ -23,6 +23,11 @@ void HostAudioChannel::Play(std::unique_ptr<AudioStream> stream, bool loop,
   FadeProgress = FadeDuration == 0 ? 1.0f : 0.0f;
   State = FadeDuration == 0 ? ACS_Playing : ACS_FadingIn;
   Looping = loop;
+  ImpLog(LogLevel::Info, LogChannel::Audio,
+         "Host channel {} play stream={} rate={} ch={} dur={} loop={}\n",
+         (int)Id, (void*)Stream.get(), Stream ? Stream->SampleRate : 0,
+         Stream ? Stream->ChannelCount : 0, Stream ? Stream->Duration : 0,
+         Looping);
 
   AudioSubtitlesStart(this);
 }
@@ -108,7 +113,15 @@ void HostAudioChannel::MixIntoTickBuffer(float dt) {
   (void)dt;
   auto& bridge = HostAudioBridge::Get();
   std::span<float> mix = bridge.TickMixBuffer();
-  if (mix.empty() || Stream == nullptr) return;
+  if (mix.empty() || Stream == nullptr) {
+    if (State == ACS_Playing || State == ACS_FadingIn ||
+        State == ACS_FadingOut) {
+      ImpLog(LogLevel::Warning, LogChannel::Audio,
+             "Host channel {} state={} stream={} mix_frames={} — silent\n",
+             (int)Id, (int)State, (void*)Stream.get(), mix.size());
+    }
+    return;
+  }
 
   const int outFrames =
       static_cast<int>(mix.size() / HostAudioBridge::kOutputChannels);
@@ -125,9 +138,11 @@ void HostAudioChannel::MixIntoTickBuffer(float dt) {
     const size_t dropBytes = static_cast<size_t>(drop) * frameBytes;
     if (dropBytes >= Staging.size()) {
       Staging.clear();
+      StagedFrames = 0;
     } else {
       Staging.erase(Staging.begin(),
                     Staging.begin() + static_cast<std::ptrdiff_t>(dropBytes));
+      StagedFrames -= drop;
     }
     StagingStart += drop;
   }
@@ -154,6 +169,11 @@ void HostAudioChannel::MixIntoTickBuffer(float dt) {
         Stream->Read(Staging.data() + oldBytes, toRead);
     if (got <= 0) {
       Staging.resize(oldBytes);
+      ImpLog(LogLevel::Warning, LogChannel::Audio,
+             "Host channel {} decode stall: got={} pos={} dur={} loop={} "
+             "staged={} needEnd={:.1f}\n",
+             (int)Id, got, Stream->ReadPosition, Stream->Duration, Looping,
+             (int64_t)StagedFrames, needEnd);
       break;
     }
     StagedFrames += got;
@@ -191,8 +211,7 @@ void HostAudioChannel::MixIntoTickBuffer(float dt) {
   const float gain = CurrentGain();
   const int rightChannel = inChannels > 1 ? 1 : 0;
   for (int f = 0; f < outFrames; ++f) {
-    const double src =
-        (ResamplePhase - (double)StagingStart) + (double)f * step;
+    const double src = (double)ResamplePhase + (double)f * step;
     const int64_t i0 = (int64_t)src;
     const double frac = src - (double)i0;
     const float left =

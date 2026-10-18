@@ -40,6 +40,9 @@ void AudioChannel::Play(std::string const& mountpoint,
   Io::Stream* stream;
   IoError err = Io::VfsOpen(mountpoint, fileName, &stream);
   if (err == IoError_OK) {
+    ImpLog(LogLevel::Info, LogChannel::Audio,
+           "Channel {} Play {}/{} loop={} fade={:.2f}\n", (int)Id,
+           mountpoint, fileName, loop, fadeInDuration);
     Play(std::unique_ptr<AudioStream>(AudioStream::Create(stream)), loop,
          fadeInDuration);
   } else {

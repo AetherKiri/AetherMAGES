@@ -25,6 +25,12 @@ class AudioStream {
 
   int BytesPerSample() const { return (BitDepth / 8) * ChannelCount; }
 
+  // Public so embed hosts can register the built-in decoders explicitly:
+  // the per-stream self-registration statics are dropped by final linkers
+  // when impacto is consumed as a static archive (iOS app link).
+  using AudioStreamCreator = auto (*)(Io::Stream* stream) -> AudioStream*;
+  static bool AddAudioStreamCreator(AudioStreamCreator c);
+
   int ChannelCount;
   int SampleRate;
   int BitDepth;
@@ -36,9 +42,6 @@ class AudioStream {
   int ReadPosition = 0;
 
  protected:
-  using AudioStreamCreator = auto (*)(Io::Stream* stream) -> AudioStream*;
-  static bool AddAudioStreamCreator(AudioStreamCreator c);
-
   AudioStream() {};
 
   Io::Stream* BaseStream = 0;
