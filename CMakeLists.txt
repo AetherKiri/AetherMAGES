@@ -801,7 +801,12 @@ set(Impacto_Header
     src/subtitle/subtitlerenderer.h
 )
 
-if (WIN32)
+# The standalone Windows executable carries its icon/manifest resources.
+# Host-library builds (IMPACTO_BUILD_HOST) embed impacto into another image,
+# where the compiled .res member is useless and actively breaks consumers
+# that force-link the archive (/WHOLEARCHIVE → LNK1241 "invalid resource file
+# specified impacto.lib(app.rc.res)").
+if (WIN32 AND NOT IMPACTO_BUILD_HOST)
     list(APPEND Impacto_Src
         windows/manifest_windows.manifest
         windows/app.rc
@@ -918,6 +923,10 @@ FetchContent_Declare(
     GIT_TAG "master"
     GIT_REPOSITORY "https://github.com/Thealexbarney/LibAtrac9.git"
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/vendor/patches/LibAtrac9/CMakeLists.txt <SOURCE_DIR>/CMakeLists.txt
+    # Windows host builds link libatrac9 statically; the stock header declares
+    # dllimport for consumers, which a static archive cannot satisfy. Replace
+    # it with the patched header that honours LIBATRAC9_STATIC.
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/vendor/patches/LibAtrac9/libatrac9.h <SOURCE_DIR>/C/src/libatrac9.h
     SYSTEM
     EXCLUDE_FROM_ALL
 )
@@ -1399,10 +1408,15 @@ if(IMPACTO_HOST_GPU)
             "LINKER:--version-script=${PROJECT_BINARY_DIR}/host-exports.map")
         set_property(TARGET impacto APPEND PROPERTY LINK_DEPENDS "${PROJECT_BINARY_DIR}/host-exports.map")
     endif()
-    add_custom_command(TARGET impacto POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" "-DNM=${CMAKE_NM}" "-DBINARY=$<TARGET_FILE:impacto>"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoSdl.cmake"
-        COMMENT "Checking embedded MAGES has no SDL runtime dependencies" VERBATIM)
+    # The SDL-runtime guard needs an nm-like symbol lister (CMAKE_NM). MSVC
+    # toolchains ship dumpbin instead of nm, so CMAKE_NM is empty and the check
+    # cannot run there. Skip it on MSVC rather than failing the post-build step.
+    if(CMAKE_NM)
+        add_custom_command(TARGET impacto POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" "-DNM=${CMAKE_NM}" "-DBINARY=$<TARGET_FILE:impacto>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckNoSdl.cmake"
+            COMMENT "Checking embedded MAGES has no SDL runtime dependencies" VERBATIM)
+    endif()
 endif()
 
 if (APPLE AND NOT IMPACTO_EMBEDDED)

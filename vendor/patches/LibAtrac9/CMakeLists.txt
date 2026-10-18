@@ -6,6 +6,13 @@ include(CheckIPOSupported)
 check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR_MESSAGE)
 option(LIBATRAC9_BUILD_SHARED "Builds libatrac9 as a shared library" ON)
 
+if(MSVC)
+    # AetherKiri: embedded host builds link impacto (and therefore libatrac9)
+    # as static archives inside the Godot extension. Force a static codec on
+    # MSVC regardless of the cached option value.
+    set(LIBATRAC9_BUILD_SHARED OFF)
+endif()
+
 set(LIBATRAC9_SOURCES 
     C/src/band_extension.c
     C/src/bit_allocation.c
@@ -31,8 +38,13 @@ else()
 endif()
 
 if(MSVC)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE COMPILING_DLL)
-    set(LIBATRAC9_BUILD_SHARED ON)
+    # AetherKiri: embedded host builds link impacto (and therefore libatrac9)
+    # as static archives inside the Godot extension. Build the codec as a
+    # static library and expose the static header branch so consumers do not
+    # generate __imp_-prefixed dllimport references that a static archive
+    # cannot satisfy.
+    set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS_RELEASE "")
+    target_compile_definitions(${PROJECT_NAME} PUBLIC LIBATRAC9_STATIC)
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS_RELEASE -s)
 endif()

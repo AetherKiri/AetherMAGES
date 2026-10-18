@@ -95,7 +95,7 @@ void SingleSheetFont::DrawProcessedText(
     }
     signature =
         (signature ^ static_cast<uint64_t>(outlineMode)) * 1099511628211ULL;
-    signature = (signature ^ fullyOpaque) * 1099511628211ULL;
+    signature = (signature ^ static_cast<uint64_t>(fullyOpaque)) * 1099511628211ULL;
     if (traced.size() < 256 && traced.insert(signature).second) {
       ImpLog(LogLevel::Warning, LogChannel::General,
              "[fonttrace] count={} opaque={} drawAlpha={:.3f} outlineAlpha={:.3f} "
