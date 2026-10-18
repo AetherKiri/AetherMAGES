@@ -731,15 +731,40 @@ VmInstruction(InstGetSystemStatus) {
   StartInstruction;
   PopExpression(type);
   switch (type) {
+    case 0: {  // System message / notification active flag
+      thread->ScriptParam = 0;
+      break;
+    }
     case 1: {  // SYSSTAT_VOICEPLAY (Note, called voiceplay, but actually
                // !voiceplay...)
       thread->ScriptParam =
           Audio::Channels[Audio::AC_VOICE0]->GetState() != Audio::ACS_Playing;
       break;
     }
+    case 2: {  // SYSSTAT_SEPLAY — current SE channel playing check
+      thread->ScriptParam =
+          Audio::Channels[Audio::AC_SE0]->GetState() != Audio::ACS_Playing;
+      break;
+    }
+    case 3: {  // SYSSTAT_BGMPLAY — BGM channel playing check
+      thread->ScriptParam =
+          Audio::Channels[Audio::AC_BGM0]->GetState() != Audio::ACS_Playing;
+      break;
+    }
+    case 4: {  // SYSSTAT_MOVIESND — movie/system sound playing check
+      thread->ScriptParam = 1;  // no movie sound system — report idle
+      break;
+    }
     case 5: {  // SYSSTAT_SKIP
       thread->ScriptParam = GetFlag(SF_MESALLSKIP);
     } break;
+    case 6:   // pad/input status (sub_424960(3))
+    case 7:   // pad/input status (sub_424960(currentCh))
+    case 8:   // pad/input status (sub_424960(0))
+    case 9:   // pad/input status (sub_424960(1))
+    case 16:  // pad/input status (sub_424960(2))
+      thread->ScriptParam = 0;
+      break;
     case 10: {  // Auto mode bit
       thread->ScriptParam = AutoModeEnabled;
     } break;
@@ -747,9 +772,19 @@ VmInstruction(InstGetSystemStatus) {
       thread->ScriptParam = 1;
       break;
     }
+    case 12:  // SE channel comparison
+    case 13:  // BGM channel comparison
+    case 14:  // system sound comparison
+    case 15:  // movie playing check
+    case 17:  // movie channel comparison
+      thread->ScriptParam = 0;
+      break;
+    default:
+      ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,
+                 "STUB instruction GetSystemStatus(type: {:d})\n", type);
+      thread->ScriptParam = 0;
+      break;
   }
-  ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,
-             "STUB instruction GetSystemStatus(type: {:d})\n", type);
 }
 VmInstruction(InstReboot) {
   StartInstruction;
@@ -1062,8 +1097,14 @@ VmInstruction(InstGameInfoInit) {
 VmInstruction(InstSystemDataReset) {
   StartInstruction;
   PopUint8(arg1);
-  ImpLogSlow(LogLevel::Warning, LogChannel::VMStub,
-             "STUB instruction SystemDataReset(arg1: {:d})\n", arg1);
+  // Reversed from original Game.exe sub_44CAF0: when arg != 0, clears the
+  // game-state ScrWork region (600..999, 0x640 bytes) and the system FlagWork
+  // region (100..149, 50 bytes). The system-config region (ScrWork[1600+])
+  // is preserved so volumes and settings survive a new-game reset.
+  if (arg1 != 0) {
+    std::memset(ScrWork.data() + 600, 0, 400 * sizeof(int));
+    std::memset(FlagWork.data() + 100, 0, 50);
+  }
 }
 VmInstruction(InstDebugData) {
   StartInstruction;
