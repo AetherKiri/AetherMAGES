@@ -1275,16 +1275,13 @@ if (NOT DEFINED IMPACTO_DISABLE_FFMPEG)
 
     find_package(FFMPEG REQUIRED)
     list(APPEND Impacto_Include_Dirs ${FFMPEG_INCLUDE_DIRS})
-    list(APPEND Impacto_Libs ${FFMPEG_LIBRARIES})
 
     find_package(avcpp CONFIG REQUIRED)
     list(APPEND Impacto_Libs
         avcpp::avcpp
-        avcpp::FFmpeg
+        ${FFMPEG_LIBRARIES}
     )
 
-    list(APPEND Impacto_Include_Dirs ${FFMPEG_INCLUDE_DIRS})
-    list(APPEND Impacto_Libs ${FFMPEG_LIBRARIES})
     pkg_check_modules(dav1d REQUIRED IMPORTED_TARGET dav1d)
     list(APPEND Impacto_Libs PkgConfig::dav1d)
     if(ANDROID)
