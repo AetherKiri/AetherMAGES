@@ -2,9 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(atrac9 LANGUAGES C)
 
-include(CheckIPOSupported)
-check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR_MESSAGE)
 option(LIBATRAC9_BUILD_SHARED "Builds libatrac9 as a shared library" ON)
+option(LIBATRAC9_ENABLE_IPO "Enable IPO for libatrac9 when supported" ON)
 
 if(MSVC)
     # AetherKiri: embedded host builds link impacto (and therefore libatrac9)
@@ -58,10 +57,16 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PUBLIC_HEADER ${CMAKE_CURRENT_S
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 
 
-if(IPO_SUPPORTED)
-    set_target_properties(${PROJECT_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+if(LIBATRAC9_ENABLE_IPO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR_MESSAGE LANGUAGES C)
+    if(IPO_SUPPORTED)
+        set_target_properties(${PROJECT_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(WARNING "IPO is not supported: ${IPO_ERROR_MESSAGE}")
+    endif()
 else()
-    message(WARNING "IPO is not supported: ${IPO_ERROR_MESSAGE}")
+    set_target_properties(${PROJECT_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION FALSE)
 endif()
 
 # Install rules
